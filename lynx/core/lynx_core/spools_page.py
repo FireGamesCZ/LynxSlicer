@@ -50,11 +50,14 @@ PAGE = r"""<!doctype html>
   .panel { margin-top:8px; padding-top:8px; border-top:1px solid var(--line); }
   table { width:100%; border-collapse:collapse; } td, th { text-align:left; padding:2px 6px 2px 0; font-size:12px; }
   td.num { text-align:right; font-variant-numeric:tabular-nums; }
+  #lastslice { border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:12px; }
+  #lastslice.bad { border-color:var(--warn); }
   .empty-note { color:var(--muted); }
 </style></head>
 <body><main>
 <h1 tabindex="-1">Spools</h1>
 <div id="error" role="alert" hidden></div>
+<div id="lastslice" role="status" hidden></div>
 <div id="forms"></div>
 <ul id="spools" aria-label="Spools"></ul>
 <p id="none" class="empty-note" hidden>No spools yet. Add a filament, then a spool.</p>
@@ -70,7 +73,20 @@ PAGE = r"""<!doctype html>
     pending[id] = { ok: done || function () {}, fail: fail };
     orca.postMessage({ id: id, op: op, args: args || {} });
   }
+  // Python pushes {"push": "plan_check", "result": ...} (ui_api.plan_push), without a request id.
+  function showPlanCheck(r) {
+    var box = document.getElementById("lastslice"), lines = [], bad = false;
+    (r.slots || []).forEach(function (s) {
+      var need = s.needed_g.toFixed(1) + " g";
+      if (s.spool_id == null) { bad = true; lines.push("Slot " + s.slot + " needs " + need + " but has no spool assigned."); }
+      else if (!s.enough) { bad = true; lines.push("Not enough: spool " + s.spool + " needs " + need + ", only " + s.remaining_g.toFixed(1) + " g left."); }
+      else lines.push("Spool " + s.spool + " needs " + need + ", " + s.remaining_g.toFixed(1) + " g left.");
+    });
+    box.textContent = "Last slice: " + lines.join(" ");
+    box.className = bad ? "bad" : ""; box.hidden = false;
+  }
   orca.onMessage(function (m) {
+    if (m && m.push === "plan_check") return showPlanCheck(m.result);
     var p = m && pending[m.id];
     if (!p) return;
     delete pending[m.id];

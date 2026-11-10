@@ -129,3 +129,62 @@ class TestBadInput(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestCheckPlan(Base):
+    def setUp(self):
+        super().setUp()
+        f = self.ok("add_filament", vendor="Prusament", material="PLA", name="Black")["id"]
+        self.p = self.ok("add_printer", name="P1P", driver="bambu")["id"]
+        self.s = self.ok("add_spool", filament_id=f, initial_g=250, printer_id=self.p, slot="ext")["id"]
+        self.ok("log_manual_usage", spool_id=self.s, grams=10)
+
+    def plan(self, **grams):
+        return {"slots": {k: {"total_g": v} for k, v in grams.items()}}
+
+    def test_enough_short_and_unassigned(self):
+        r = self.ok("check_plan", printer_id=self.p, plan=self.plan(ext=12.34, ams1=5))
+        self.assertEqual(r["slots"], [
+            dict(slot="ext", spool_id=self.s, spool="Prusament PLA Black", needed_g=12.3, remaining_g=240.0, enough=True),
+            dict(slot="ams1", spool_id=None, spool=None, needed_g=5.0, remaining_g=None, enough=False)])
+        short, = self.ok("check_plan", printer_id=self.p, plan=self.plan(ext=300))["slots"]
+        self.assertEqual((short["enough"], short["remaining_g"]), (False, 240.0))
+
+    def test_bad_input(self):
+        self.err("check_plan", "does not exist", printer_id=99, plan=self.plan(ext=1))
+        self.err("check_plan", "plan must look like", printer_id=self.p, plan={"slots": []})
+        self.err("check_plan", "total_g", printer_id=self.p, plan={"slots": {"ext": {}}})
+
+
+class TestPush(unittest.TestCase):
+    def test_dev_server_push_and_page_script(self):
+        import json, os, shutil, subprocess, sys, tempfile, threading, urllib.request
+        sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "plugin"))
+        from dev_server import make_server
+        from lynx_core import spools_page
+        with tempfile.TemporaryDirectory() as tmp:
+            ready, box = threading.Event(), []
+
+            def serve():  # the sqlite connection must be made on the thread that uses it
+                box.append(make_server(os.path.join(tmp, "s.sqlite3")))
+                ready.set()
+                box[0].serve_forever()
+            threading.Thread(target=serve, daemon=True).start()
+            ready.wait()
+            server = box[0]
+            self.addCleanup(server.server_close)
+            self.addCleanup(server.shutdown)
+            base = f"http://127.0.0.1:{server.server_port}"
+            req = urllib.request.Request(f"{base}/api", headers={"Content-Type": "application/json"}, data=json.dumps(
+                {"id": 1, "op": "add_printer", "args": {"name": "P", "driver": "bambu"}}).encode())
+            pid = json.load(urllib.request.urlopen(req))["result"]["id"]
+            msg = json.load(urllib.request.urlopen(f"{base}/push?printer={pid}"))
+            self.assertEqual(msg["push"], "plan_check")
+            self.assertEqual(msg["result"]["slots"][0]["spool_id"], None)  # no spool in the sample slot
+            self.assertIn("push=", urllib.request.urlopen(f"{base}/?push={pid}").read().decode())
+            script = os.path.join(tmp, "page.js")
+            body = spools_page.PAGE.split("<script>", 1)[1].split("</script>", 1)[0]
+            with open(script, "w") as f:
+                f.write(body)
+            if shutil.which("node"):
+                subprocess.run(["node", "--check", script], check=True)

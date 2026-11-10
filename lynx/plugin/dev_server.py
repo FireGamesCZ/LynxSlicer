@@ -21,6 +21,7 @@ window.orca = (function () {
   var handlers = [];
   return {
     onMessage: function (cb) { handlers.push(cb); },
+    deliver: function (m) { handlers.forEach(function (h) { h(m); }); },
     postMessage: function (data) {
       fetch("/api", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) })
         .then(function (r) { return r.json(); })
@@ -28,6 +29,10 @@ window.orca = (function () {
     }
   };
 })();
+// ?push=<printer id> asks /push for one plan_check push, like the plug-in sends after a slice.
+var pushId = new URLSearchParams(location.search).get("push");
+if (pushId) fetch("/push?printer=" + encodeURIComponent(pushId)).then(function (r) { return r.json(); })
+  .then(function (m) { window.addEventListener("load", function () { orca.deliver(m); }); });
 </script>"""
 
 
@@ -69,9 +74,17 @@ def make_server(db_path, port=0):
             if not self._host_ok():
                 return
             url = urlsplit(self.path)
+            query = parse_qs(url.query)
+            if url.path == "/push":
+                sample = {"slots": {"ext": {"total_g": 12.3}}}
+                try:
+                    reply = ui_api.handle(self.db, {"op": "check_plan", "args": {"printer_id": int(query["printer"][0]), "plan": sample}})
+                except (KeyError, ValueError):
+                    return self._send(400, "text/plain", b"printer=<id> required")
+                return self._send(200, "application/json", json.dumps(ui_api.plan_push(reply.get("result"))).encode())
             if url.path != "/":
                 return self._send(404, "text/plain", b"not found")
-            theme = parse_qs(url.query).get("theme", [""])[0]
+            theme = query.get("theme", [""])[0]
             html = spools_page.PAGE.replace("<head>", "<head>" + (theme_script(theme) if theme in THEMES else ""), 1)
             html = html.replace("<body>", "<body>" + SHIM, 1)
             self._send(200, "text/html; charset=utf-8", html.encode())

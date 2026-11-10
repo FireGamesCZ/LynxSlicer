@@ -2,8 +2,11 @@
 
 Status as of 2026-11-10. This records decisions and the order of work.
 
-Done so far: `lynx/core` (inventory, preset export, Bambu listener; reviewed, tests pass,
-nothing run against a printer yet). In progress: first build of the fork, Spools plug-in.
+Done so far: the fork builds on Fedora 45 (GCC 16, CMake 4.3) and runs; `lynx/core`
+(inventory, preset export, Bambu listener; reviewed, tests pass, not yet run against a
+printer); first Spools plug-in (not yet run inside the application); per-layer
+statistics split by filament. In progress: Filaments top-level tab prototype, wiring the
+plug-in to slice results.
 
 ## 1. Goal
 
@@ -200,8 +203,10 @@ M4 does not depend on M1–M3 and can run in parallel.
 
 ## 7. Risks
 
-1. **Bambu network plug-in in a renamed build.** If it does not load, Bambu is left with
-   LAN + Developer Mode. Checked first, in M0, because it can change the plan.
+1. **Bambu network plug-in in a renamed build.** In our own build (still named
+   OrcaSlicer) the plug-in loads and a P1P connects, checked by hand on 2026-11-11. To
+   be checked again once the application is renamed; if it stops loading, Bambu is left
+   with LAN + Developer Mode.
 2. **No hardware.** AMS, lidar and Prusa printers can only be tested on recorded reports
    and by users after release; marked experimental until then.
 3. **Fork maintenance.** Upstream lands dozens of commits a week. The layout change
@@ -213,8 +218,9 @@ M4 does not depend on M1–M3 and can run in parallel.
 6. **Bambu listener is untested on hardware.** Fixtures are synthetic, built from Orca's
    parser. Telling a cancel from a failure relies on an error code from community
    sources. Record real traffic with `lynx/core/tools/bambu_record.py` first.
-7. **Toolchain.** Fedora 45 ships GCC 16 and CMake 4.3; whether Orca builds with them is
-   not known yet.
+7. **Flush on multi-filament prints.** The per-layer statistics leave out the flush at
+   filament changes (it is only in the per-filament total), so an estimate for a
+   cancelled AMS print comes out low unless the gap is spread over the layers.
 
 ## 8. Open decisions
 

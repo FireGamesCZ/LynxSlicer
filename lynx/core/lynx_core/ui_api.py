@@ -79,6 +79,15 @@ def _flag(name, v):
     return v
 
 
+def _plan(name, v):
+    slots = v.get("slots") if isinstance(v, dict) else None
+    if not isinstance(slots, dict) or not all(isinstance(i, dict) for i in slots.values()):
+        raise Bad(f"{name} must look like {{\"slots\": {{\"ext\": {{\"total_g\": 12.3}}}}}}")
+    for slot, info in slots.items():
+        _nonneg(f"{name} slot {slot} total_g", info.get("total_g"))
+    return v
+
+
 # --- lookups ---
 
 def _need(conn, getter, id_, what):
@@ -199,6 +208,28 @@ def archive_spool(conn, spool_id):
     return {"id": spool_id}
 
 
+def plan_push(result):
+    """The one shape of a Python -> page message that is not a reply (it has no id)."""
+    return {"push": "plan_check", "result": result}
+
+
+def check_plan(conn, printer_id, plan):
+    """Per slot of a plan already keyed by printer slot name: the loaded spool and whether it is enough."""
+    _need(conn, inv.get_printer, printer_id, "printer")
+    short = {slot: left for slot, _, _, left in inv.check_enough(conn, printer_id, plan)}
+    slots = []
+    for slot, info in plan["slots"].items():
+        spool_id = inv._slot_spool(conn, printer_id, slot)
+        spool = None
+        if spool_id is not None:
+            f = inv.get_filament(conn, inv.get_spool(conn, spool_id)["filament_id"])
+            spool = " ".join(x for x in (f["vendor"], f["material"], f["name"]) if x)
+        slots.append(dict(slot=slot, spool_id=spool_id, spool=spool, needed_g=round(info["total_g"], 1),
+                          remaining_g=None if spool_id is None else round(short.get(slot, inv.remaining_g(conn, spool_id)), 1),
+                          enough=spool_id is not None and slot not in short))
+    return {"printer_id": printer_id, "slots": slots}
+
+
 # op -> (function, {arg: validator}, required args)
 OPS = {
     "list_filaments": (list_filaments, {}, ()),
@@ -217,6 +248,7 @@ OPS = {
     "list_usage": (list_usage, dict(spool_id=_id), ("spool_id",)),
     "undo_usage": (undo_usage, dict(usage_id=_id), ("usage_id",)),
     "archive_spool": (archive_spool, dict(spool_id=_id), ("spool_id",)),
+    "check_plan": (check_plan, dict(printer_id=_id, plan=_plan), ("printer_id", "plan")),
 }
 
 
