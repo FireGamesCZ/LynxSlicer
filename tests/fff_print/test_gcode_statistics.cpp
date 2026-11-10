@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <initializer_list>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -56,6 +57,10 @@ TEST_CASE("The statistics of a sliced plate add up per layer, feature and object
     for (const nlohmann::json &layer : layers) {
         time += layer["time"].get<double>();
         volume += layer["volume"].get<double>();
+        // One filament: its extrusions are all of the layer's.
+        REQUIRE(layer["filaments"].size() == 1);
+        CHECK(layer["filaments"].front()["id"] == 1);
+        CHECK_THAT(layer["filaments"].front()["weight"].get<double>(), Catch::Matchers::WithinAbs(layer["weight"].get<double>(), 1e-4));
         double features_time = 0.;
         for (const auto &[name, feature] : layer["features"].items())
             features_time += feature["time"].get<double>();
@@ -66,6 +71,12 @@ TEST_CASE("The statistics of a sliced plate add up per layer, feature and object
     CHECK_THAT(volume, Catch::Matchers::WithinAbs(summary["volume"].get<double>(), 0.1));
     CHECK_THAT(summary["weight"].get<double>(), Catch::Matchers::WithinRel(summary["volume"].get<double>() * 1.25 / 1000., 1e-4));
     CHECK(summary.contains("filament_cost"));
+
+    // Nothing is flushed here, so the layers' filament volumes are the summary's.
+    double layers_filament_volume = 0.;
+    for (const nlohmann::json &layer : layers)
+        layers_filament_volume += layer["filaments"].front()["volume"].get<double>();
+    CHECK_THAT(layers_filament_volume, Catch::Matchers::WithinAbs(summary["filaments"].front()["volume"].get<double>(), 0.1));
 
     // The filament splits by use as the preview's table does.
     REQUIRE(summary["filaments"].size() == 1);
@@ -93,6 +104,51 @@ TEST_CASE("The statistics of a sliced plate add up per layer, feature and object
         objects_volume += objects[i]["volume"].get<double>();
     }
     CHECK_THAT(objects_volume, Catch::Matchers::WithinAbs(model_volume, 0.1));
+}
+
+TEST_CASE("The layers of a two-filament plate list the filaments they extrude, the prime tower included", "[GCodeStatistics]")
+{
+    // The walls print with the second filament and the rest with the first, so each layer changes tool.
+    DynamicPrintConfig config = Test::multifilament_config(2, { { "sparse_infill_filament_id", 1 },
+                                                                { "internal_solid_filament_id", 1 },
+                                                                { "top_surface_filament_id", 1 },
+                                                                { "bottom_surface_filament_id", 1 },
+                                                                { "outer_wall_filament_id", 2 },
+                                                                { "inner_wall_filament_id", 2 },
+                                                                { "enable_prime_tower", true },
+                                                                { "wipe_tower_x", 50 },
+                                                                { "wipe_tower_y", 50 },
+                                                                { "layer_height", 0.3 } });
+    Print print;
+    Model model;
+    Test::init_print({ Test::cube(10) }, print, model, config);
+    // The first apply of a new Print counts one filament and clears the prime tower; see test_wipe_tower.cpp.
+    print.apply(model, config);
+    GCodeProcessorResult result;
+    Test::gcode(print, &result);
+
+    const nlohmann::json statistics = nlohmann::json::parse(gcode_statistics_json(result));
+    const nlohmann::json &summary   = statistics["summary"];
+    REQUIRE(summary["filaments"].size() == 2);
+    std::map<int, double> layers_volume;
+    for (const nlohmann::json &layer : statistics["layers"]) {
+        double weight = 0.;
+        for (const nlohmann::json &filament : layer["filaments"]) {
+            layers_volume[filament["id"].get<int>()] += filament["volume"].get<double>();
+            weight += filament["weight"].get<double>();
+        }
+        CHECK_THAT(weight, Catch::Matchers::WithinAbs(layer["weight"].get<double>(), 1e-3));
+    }
+    // Both filaments print in the layers above the first, whatever the first layer does.
+    CHECK(statistics["layers"].back()["filaments"].size() == 2);
+    // The tower's extrusions are in the layers; only flush that the G-code does not extrude (the nozzle volume
+    // flushed as Unretracts between FLUSH_START and FLUSH_END tags) is in "flush" and has no layer. This
+    // plain G-code has none, so the sums agree up to rounding.
+    for (const nlohmann::json &filament : summary["filaments"]) {
+        CAPTURE(filament["id"]);
+        CHECK(filament["flush"]["volume"].get<double>() == 0.);
+        CHECK_THAT(layers_volume[filament["id"].get<int>()], Catch::Matchers::WithinAbs(filament["volume"].get<double>(), 0.2));
+    }
 }
 
 TEST_CASE("Copies sliced as objects of their own keep their number in the model object", "[GCodeStatistics]")

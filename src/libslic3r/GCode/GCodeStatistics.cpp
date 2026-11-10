@@ -76,6 +76,7 @@ std::string gcode_statistics_json(const GCodeProcessorResult &result)
         double                         travel_time{ 0. };
         Usage                          total;
         std::map<ExtrusionRole, Usage> features;
+        std::map<size_t, Usage>        filaments;
     };
     std::vector<Layer>             layers;
     std::map<ExtrusionRole, Usage> features;
@@ -104,6 +105,7 @@ std::string gcode_statistics_json(const GCodeProcessorResult &result)
         layer.total.volume += usage.volume;
         layer.total.weight += usage.weight;
         layer.features[move.extrusion_role].add(usage);
+        layer.filaments[move.extruder_id].add(usage);
         features[move.extrusion_role].add(usage);
     }
 
@@ -148,13 +150,19 @@ std::string gcode_statistics_json(const GCodeProcessorResult &result)
                          { "features", features_json(features) } };
 
     json layers_json = json::array();
-    for (const Layer &layer : layers)
+    for (const Layer &layer : layers) {
+        // The extrusions only, wipe tower included: the flush of the summary has no layer.
+        json layer_filaments = json::array();
+        for (const auto &[filament, usage] : layer.filaments)
+            layer_filaments.push_back(json{ { "id", filament + 1 }, { "volume", rounded(usage.volume, 3) }, { "weight", rounded(usage.weight, 4) } });
         layers_json.push_back(json{ { "z", rounded(layer.z, 3) },
                                     { "time", rounded(layer.total.time, 3) },
                                     { "travel_time", rounded(layer.travel_time, 3) },
                                     { "volume", rounded(layer.total.volume, 3) },
                                     { "weight", rounded(layer.total.weight, 4) },
-                                    { "features", features_json(layer.features) } });
+                                    { "features", features_json(layer.features) },
+                                    { "filaments", layer_filaments } });
+    }
 
     // The supports of an instance are numbered as the instance.
     json objects_json = json::array();
