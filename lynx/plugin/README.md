@@ -28,6 +28,7 @@ The database is `spools.sqlite3` in the plug-in's storage folder, `orca_plugins/
 cd lynx/core
 uv run python ../plugin/dev_server.py            # then open the printed http://127.0.0.1:8765/ URL
 uv run python ../plugin/dev_server.py --db /tmp/spools.sqlite3   # keep the data
+Add `?theme=dark` or `?theme=light` to the URL to emulate the colours OrcaSlicer injects (without it the page follows the OS theme). The server only answers requests whose Host is `127.0.0.1:<port>` or `localhost:<port>` and whose POSTs are `application/json`.
 ```
 
 Binds to 127.0.0.1 only; without `--db` it uses a temporary database.

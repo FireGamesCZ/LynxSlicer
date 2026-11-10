@@ -10,6 +10,8 @@ import sqlite3
 from . import inventory as inv
 
 DRIVERS = ("bambu", "prusalink")
+MAX_NUM = 1e7  # grams, degrees, price: far above anything real, far below overflow
+MAX_ID = 2**63 - 1  # SQLite INTEGER range
 
 
 class Bad(ValueError):
@@ -19,7 +21,11 @@ class Bad(ValueError):
 # --- argument validators: each takes (name, value) and returns the cleaned value ---
 
 def _num(name, v):
-    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        raise Bad(f"{name} must be a number")
+    if abs(v) > MAX_NUM:  # before isfinite(): that raises OverflowError for huge ints
+        raise Bad(f"{name} is too large (max {MAX_NUM:g})")
+    if not math.isfinite(v):
         raise Bad(f"{name} must be a number")
     return float(v)
 
@@ -41,6 +47,8 @@ def _nonneg(name, v):
 def _id(name, v):
     if isinstance(v, bool) or not isinstance(v, int):
         raise Bad(f"{name} must be a whole number")
+    if not 1 <= v <= MAX_ID:
+        raise Bad(f"{name} must be between 1 and {MAX_ID}")
     return v
 
 

@@ -31,14 +31,17 @@ class SpoolsPage(orca.pages.PagesPluginCapabilityBase):
         return spools_page.PAGE
 
     def on_message(self, message):
+        # The host parses the page's JSON first, so this is normally a dict (a str only if it was not valid JSON).
+        request = message
         try:
-            request = json.loads(message)
+            if isinstance(message, str):
+                request = json.loads(message)
             if self.conn is None:  # storage() only works inside a plug-in callback, so not at import time
                 self.conn = inventory.connect(os.path.join(orca.host.plugin.storage(), "spools.sqlite3"))
             reply = ui_api.handle(self.conn, request)
         except Exception as error:  # the page must always get an answer
-            reply = {"id": request.get("id") if isinstance(request, dict) else None, "ok": False,
-                     "error": f"Spools could not handle the request: {error}"}
+            rid = request.get("id") if isinstance(request, dict) else None
+            reply = {"id": rid, "ok": False, "error": f"Spools could not handle the request: {error}"}
         self.post_message(reply)
 
 

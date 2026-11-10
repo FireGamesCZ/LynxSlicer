@@ -87,6 +87,17 @@ class TestBadInput(Base):
         self.err("add_spool", "printer 99 does not exist", filament_id=self.f, initial_g=5, printer_id=99, slot="a")
         self.err("add_spool", "both a printer and a slot", filament_id=self.f, initial_g=5, slot="a")
 
+    def test_huge_numbers_and_ids(self):
+        for big in (1e300, 10 ** 400, 1e7 + 1):
+            self.err("add_spool", "too large", filament_id=self.f, initial_g=big)
+            self.err("log_manual_usage", "too large", spool_id=self.s, grams=big)
+        self.err("add_filament", "too large", material="PLA", price_per_kg=1e8)
+        self.err("add_filament", "too large", material="PLA", spool_tare_g=10 ** 400)
+        self.ok("add_spool", filament_id=self.f, initial_g=1e7)
+        for bad in (0, -1, 2 ** 63, 10 ** 30):
+            self.err("log_manual_usage", "between 1 and", spool_id=bad, grams=1)
+            self.err("undo_usage", "between 1 and", usage_id=bad)
+
     def test_filament_printer(self):
         self.err("add_filament", "material is required", material="  ")
         self.err("add_filament", "#RRGGBB", material="PLA", color_hex="red")
