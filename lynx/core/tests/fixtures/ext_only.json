@@ -1,0 +1,19 @@
+{
+ "synthetic": true,
+ "note": "hand-built from the fields OrcaSlicer's parser reads; not recorded traffic",
+ "reports": [
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "vt_tray": {
+     "id": "254",
+     "tray_type": "PLA",
+     "tray_color": "FFFFFFFF",
+     "tray_info_idx": "GFA00",
+     "remain": -1
+    }
+   }
+  }
+ ]
+}

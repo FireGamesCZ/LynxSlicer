@@ -1,0 +1,14 @@
+[project]
+name = "lynx-core"
+version = "0.0.1"
+description = "Spool inventory and printer tracking for LynxSlicer"
+license = "AGPL-3.0-only"
+requires-python = ">=3.12"
+dependencies = ["paho-mqtt>=2"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["lynx_core"]

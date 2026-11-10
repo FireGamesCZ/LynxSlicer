@@ -1,0 +1,99 @@
+{
+ "synthetic": true,
+ "note": "hand-built from the fields OrcaSlicer's parser reads; not recorded traffic",
+ "reports": [
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "gcode_state": "IDLE",
+    "subtask_name": "cube",
+    "gcode_file": "cube.gcode.3mf",
+    "layer_num": 0,
+    "total_layer_num": 100,
+    "mc_percent": 0,
+    "print_error": 0,
+    "ams": {
+     "ams": [
+      {
+       "id": "0",
+       "tray": [
+        {
+         "id": "0",
+         "tray_type": "PLA",
+         "tray_color": "FF0000FF",
+         "tray_info_idx": "GFA00",
+         "remain": 80
+        },
+        {
+         "id": "1",
+         "tray_type": "PETG",
+         "tray_color": "00FF00FF",
+         "tray_info_idx": "GFG00",
+         "remain": -1
+        },
+        {
+         "id": "2",
+         "tray_type": "",
+         "tray_color": "",
+         "tray_info_idx": ""
+        }
+       ]
+      }
+     ]
+    },
+    "vt_tray": {
+     "id": "254",
+     "tray_type": "",
+     "tray_color": "",
+     "tray_info_idx": ""
+    }
+   }
+  },
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "gcode_state": "RUNNING"
+   }
+  },
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "layer_num": 1,
+    "mc_percent": 1
+   }
+  },
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "nozzle_temper": 210.0
+   }
+  },
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "layer_num": 2
+   }
+  },
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "layer_num": 2,
+    "mc_percent": 2
+   }
+  },
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "gcode_state": "FINISH",
+    "mc_percent": 100
+   }
+  }
+ ]
+}

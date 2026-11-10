@@ -1,0 +1,79 @@
+{
+ "synthetic": true,
+ "note": "hand-built from the fields OrcaSlicer's parser reads; not recorded traffic",
+ "reports": [
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "ams": {
+     "ams": [
+      {
+       "id": "0",
+       "tray": [
+        {
+         "id": "0",
+         "tray_type": "PLA",
+         "tray_color": "FF0000FF",
+         "tray_info_idx": "GFA00",
+         "remain": 80
+        },
+        {
+         "id": "1",
+         "tray_type": "PETG",
+         "tray_color": "00FF00FF",
+         "tray_info_idx": "GFG00",
+         "remain": -1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "ams": {
+     "ams": [
+      {
+       "id": "0",
+       "tray": [
+        {
+         "id": "0",
+         "remain": 75,
+         "tray_type": "PLA",
+         "tray_color": "FF0000FF",
+         "tray_info_idx": "GFA00"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "print": {
+    "command": "push_status",
+    "sequence_id": "1",
+    "ams": {
+     "ams": [
+      {
+       "id": "1",
+       "tray": [
+        {
+         "id": "3",
+         "tray_type": "ABS",
+         "tray_color": "0000FFFF",
+         "tray_info_idx": "GFB00",
+         "remain": 100
+        }
+       ]
+      }
+     ]
+    }
+   }
+  }
+ ]
+}
