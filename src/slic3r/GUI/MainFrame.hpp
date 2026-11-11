@@ -44,6 +44,7 @@
 #endif
 #define TAB_ID_PREPARE       "prepare"
 #define TAB_ID_PREVIEW       "preview"
+#define TAB_ID_FILAMENTS     "filaments"
 #define TAB_ID_MONITOR       "monitor"
 // Printer-agents mode shows the legacy web page alongside the native Device tab, so it needs an
 // id of its own: sharing TAB_ID_MONITOR makes every name lookup resolve to whichever of the two
@@ -540,6 +541,7 @@ public:
     Notebook*             m_tabpanel{ nullptr };
     wxBoxSizer*           m_side_tools{ nullptr };
     ParamsPanel*          m_param_panel{ nullptr };
+    ParamsPanel*          m_filament_panel{ nullptr }; // the Filaments tab, hosting TabFilament
     ParamsDialog*         m_param_dialog{ nullptr };
     //BBS
     SettingsDialog        m_settings_dialog;

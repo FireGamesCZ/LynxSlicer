@@ -6921,6 +6921,26 @@ bool Sidebar::show_object_list(bool show) const
 
 void Sidebar::finish_param_edit() { p->editing_filament = -1; }
 
+// The Filaments tab opened from its header writes preset changes to the slot holding the open
+// preset: the slot edited last when it still does, else the first one. None holds it: no slot.
+void Sidebar::begin_filament_edit()
+{
+    Tab* tab = wxGetApp().get_tab(Preset::TYPE_FILAMENT);
+    if (p->editing_filament >= 0 || tab == nullptr)
+        return;
+    const PresetBundle& bundle = *wxGetApp().preset_bundle;
+    const std::string&  name   = bundle.filaments.get_selected_preset_name();
+    const int           count  = int(std::min(p->combos_filament.size(), bundle.filament_presets.size()));
+    auto holds = [&](int idx) { return idx >= 0 && idx < count && bundle.filament_presets[idx] == name; };
+    int idx = tab->get_combo_box()->get_filament_idx();
+    if (!holds(idx))
+        idx = int(std::find(bundle.filament_presets.begin(), bundle.filament_presets.begin() + count, name) - bundle.filament_presets.begin());
+    if (!holds(idx))
+        return;
+    tab->get_combo_box()->set_filament_idx(idx);
+    p->editing_filament = idx;
+}
+
 std::vector<PlaterPresetComboBox*>& Sidebar::combos_filament()
 {
     return p->combos_filament;
@@ -15528,8 +15548,10 @@ void Plater::priv::on_modify_filament(SimpleEvent &evt)
         Tab *tab = wxGetApp().get_tab(Preset::Type::TYPE_FILAMENT);
         //tab->restore_last_select_item();
         if (tab == nullptr) { return; }
-        // Popup needs to be called before "restore_last_select_item", otherwise the page may not be updated
-        wxGetApp().params_dialog()->Popup();
+        // The tab must be shown before "restore_last_select_item", otherwise the page may not be updated
+        wxGetApp().mainframe->select_tab(static_cast<wxPanel*>(tab->GetParent()));
+        // The edited preset need not be any slot's: keep the selection below out of the slots, as the dialog did.
+        sidebar->finish_param_edit();
         tab->restore_last_select_item();
         // Opening Studio and directly accessing the Filament settings interface through the edit preset button will not take effect and requires manual settings.
         tab->set_just_edit(true);

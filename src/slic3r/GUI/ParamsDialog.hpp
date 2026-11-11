@@ -37,6 +37,8 @@ public:
     void Popup();
 
     void set_editing_filament_id(std::string id) { m_editing_filament_id = id; }
+    // Ends an edit opened from the Edit Filament dialog, which then reopens.
+    void finish_filament_edit();
 
 protected:
     void on_dpi_changed(const wxRect& suggested_rect) override;

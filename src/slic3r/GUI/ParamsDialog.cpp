@@ -80,15 +80,22 @@ ParamsDialog::ParamsDialog(wxWindow * parent)
                 wxGetApp().plater()->normalize_bed_types(true);
         }
 
-        if (!m_editing_filament_id.empty()) {
-            Filamentinformation *filament_info = new Filamentinformation();
-            filament_info->filament_id        = m_editing_filament_id;
-            wxQueueEvent(wxGetApp().plater(), new SimpleEvent(EVT_MODIFY_FILAMENT, filament_info));
-            m_editing_filament_id.clear();
-        }
+        finish_filament_edit();
 #endif
         wxGetApp().sidebar().finish_param_edit();
     });
+}
+
+void ParamsDialog::finish_filament_edit()
+{
+    if (m_editing_filament_id.empty())
+        return;
+    if (Tab* tab = wxGetApp().get_tab(Preset::TYPE_FILAMENT))
+        tab->set_just_edit(false);
+    Filamentinformation *filament_info = new Filamentinformation();
+    filament_info->filament_id        = m_editing_filament_id;
+    wxQueueEvent(wxGetApp().plater(), new SimpleEvent(EVT_MODIFY_FILAMENT, filament_info));
+    m_editing_filament_id.clear();
 }
 
 void ParamsDialog::Popup()

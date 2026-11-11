@@ -8896,6 +8896,8 @@ void GUI_App::update_mode()
     //BBS: GUI refactor
     if (mainframe->m_param_panel)
         mainframe->m_param_panel->update_mode();
+    if (mainframe->m_filament_panel)
+        mainframe->m_filament_panel->update_mode();
     if (mainframe->m_param_dialog)
         mainframe->m_param_dialog->panel()->update_mode();
     if (PrinterWebView* view = PrinterWebView::if_built())

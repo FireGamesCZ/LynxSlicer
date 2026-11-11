@@ -1112,7 +1112,8 @@ bool PlaterPresetComboBox::switch_to_tab()
     if (tab->GetParent() == wxGetApp().params_panel())
         wxGetApp().mainframe->select_tab(TAB_ID_PREPARE);
     else {
-        wxGetApp().params_dialog()->Popup();
+        // The Filaments tab, or the settings dialog for the printer.
+        wxGetApp().mainframe->select_tab(static_cast<wxPanel*>(tab->GetParent()));
         tab->OnActivate();
     }
     tab->restore_last_select_item();

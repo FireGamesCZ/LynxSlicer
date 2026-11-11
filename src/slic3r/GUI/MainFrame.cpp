@@ -876,7 +876,8 @@ bool MainFrame::handle_global_shortcut(const KeyChord& chord)
             for (int tried = 1; tried < count; ++tried) {
                 sel = (sel + step) % count;
                 m_tabpanel->SetSelection(size_t(sel));
-                if (m_tabpanel->GetSelection() == sel)
+                // Filaments vetoes being left, not being entered: retrying would repeat its warning.
+                if (m_tabpanel->GetSelection() == sel || m_tabpanel->GetCurrentPage() == m_filament_panel)
                     break;
             }
             // Focus the tab bar on any page but the canvases, since CHAR_HOOK gets no keys while a web page has focus
@@ -1538,6 +1539,10 @@ void MainFrame::init_tabpanel() {
         }
         //else if (panel == m_param_panel)
         //    m_param_panel->OnActivate();
+        else if (panel == m_filament_panel) {
+            wxGetApp().sidebar().begin_filament_edit();
+            m_filament_panel->OnActivate();
+        }
 #ifdef SLIC3R_CAD
         else if (m_design_page != nullptr && panel == m_design_page) {
             // Re-sync the Design bed to the active printer: the panel is built before the
@@ -1571,6 +1576,20 @@ void MainFrame::init_tabpanel() {
 
         if (panel)
             panel->SetFocus();
+    });
+
+    // Leaving the Filaments tab ends the edit, as closing the settings dialog does.
+    m_tabpanel->Bind(wxEVT_BOOKCTRL_PAGE_CHANGING, [this](wxBookCtrlEvent& e) {
+        e.Skip();
+        if (e.GetEventObject() != m_tabpanel || e.GetOldSelection() == wxNOT_FOUND ||
+            m_tabpanel->GetPage(e.GetOldSelection()) != m_filament_panel)
+            return;
+        if (Tab* tab = wxGetApp().get_tab(Preset::TYPE_FILAMENT); tab && !tab->validate_filament_temperature_pairs()) {
+            e.Veto();
+            return;
+        }
+        m_param_dialog->finish_filament_edit();
+        wxGetApp().sidebar().finish_param_edit();
     });
 
     if (wxGetApp().is_editor()) {
@@ -1688,7 +1707,7 @@ void MainFrame::show_device(bool should_use_native) {
                 m_tabpanel->RemovePage(idx);
             }
             m_monitor_page->Show(false);
-            m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_PREVIEW}), TAB_ID_MONITOR, m_monitor_page,
+            m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_FILAMENTS, TAB_ID_PREVIEW}), TAB_ID_MONITOR, m_monitor_page,
                                    _L("Device"), "tab_monitor_active");
         }
 
@@ -1743,7 +1762,7 @@ void MainFrame::show_device(bool should_use_native) {
 
         // Insert monitor page
         m_monitor_page->Show(false);
-        m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_PREVIEW}), TAB_ID_MONITOR, m_monitor_page,
+        m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_FILAMENTS, TAB_ID_PREVIEW}), TAB_ID_MONITOR, m_monitor_page,
                                _L("Device"), "tab_monitor_active");
 
         if (wxGetApp().is_enable_multi_machine()) {
@@ -1780,7 +1799,7 @@ void MainFrame::show_device(bool should_use_native) {
             m_tabpanel->RemovePage(idx);
         }
         m_printer_view_page->Show(false);
-        m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_PREVIEW}), TAB_ID_MONITOR, m_printer_view_page,
+        m_tabpanel->InsertPage(m_tabpanel->PositionAfter({TAB_ID_FILAMENTS, TAB_ID_PREVIEW}), TAB_ID_MONITOR, m_printer_view_page,
                                _L("Device"), "tab_monitor_active");
     }
     fit_tab_labels(); // ORCA on printer change
@@ -1913,13 +1932,16 @@ void MainFrame::create_preset_tabs()
     //BBS: GUI refactor
     //m_param_panel = new ParamsPanel(m_tabpanel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBK_LEFT | wxTAB_TRAVERSAL);
     m_param_dialog = new ParamsDialog(m_plater);
+    // Built on the frame, then moved into the book: a Notebook parent gives a ParamsPanel the sidebar's Process top bar.
+    m_filament_panel = new ParamsPanel(this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxBK_LEFT | wxTAB_TRAVERSAL);
+    m_filament_panel->Reparent(m_tabpanel);
 
     add_created_tab(new TabPrint(m_param_panel), "cog");
     add_created_tab(new TabPrintPlate(m_param_panel), "cog");
     add_created_tab(new TabPrintObject(m_param_panel), "cog");
     add_created_tab(new TabPrintPart(m_param_panel), "cog");
     add_created_tab(new TabPrintLayer(m_param_panel), "cog");
-    add_created_tab(new TabFilament(m_param_dialog->panel()), "spool");
+    add_created_tab(new TabFilament(m_filament_panel), "spool");
     /* BBS work around to avoid appearance bug */
     //add_created_tab(new TabSLAPrint(m_param_panel));
     //add_created_tab(new TabSLAMaterial(m_param_panel));
@@ -1927,6 +1949,9 @@ void MainFrame::create_preset_tabs()
 
     m_param_panel->rebuild_panels();
     m_param_dialog->panel()->rebuild_panels();
+    m_filament_panel->rebuild_panels();
+    // No icon: the teal spool would vanish on the teal selected tab.
+    m_tabpanel->AddPage(TAB_ID_FILAMENTS, m_filament_panel, _L("Filaments"));
     //m_tabpanel->AddPage(m_param_panel, "Parameters", "notebook_presets_active");
     //m_tabpanel->InsertPage(tpSettings, m_param_panel, _L("Parameters"), std::string("cog"));
 }
@@ -1950,7 +1975,7 @@ bool MainFrame::is_active_and_shown_tab(wxPanel* panel)
 {
     if (panel == m_param_panel)
         panel = m_plater;
-    else
+    else if (panel != m_filament_panel)
         return m_param_dialog->IsShown();
 
     if (m_tabpanel->GetCurrentPage() != panel)
@@ -2788,6 +2813,7 @@ void MainFrame::on_dpi_changed(const wxRect& suggested_rect)
     //BBS GUI refactor: remove unused layout new/dlg
     //if (m_layout != ESettingsLayout::Dlg) // Do not update tabs if the Settings are in the separated dialog
     m_param_panel->msw_rescale();
+    m_filament_panel->msw_rescale();
     // A panel mid-build gets the pass once it is complete.
     ProjectPanel::when_built([](ProjectPanel& project) { project.msw_rescale(); });
     MonitorPanel::when_built([](MonitorPanel& monitor) { monitor.msw_rescale(); });
@@ -2855,6 +2881,7 @@ void MainFrame::on_sys_color_changed()
     // BBS
     m_tabpanel->Rescale();
     m_param_panel->msw_rescale();
+    m_filament_panel->msw_rescale();
 
     // update Plater
     wxGetApp().plater()->sys_color_changed();
@@ -4215,7 +4242,7 @@ void MainFrame::select_tab(wxPanel* panel)
         return;
     if (panel == m_param_panel) {
         panel = m_plater;
-    } else if (dynamic_cast<ParamsPanel*>(panel)) {
+    } else if (dynamic_cast<ParamsPanel*>(panel) && m_tabpanel->FindPage(panel) == wxNOT_FOUND) {
         wxGetApp().params_dialog()->Popup();
         return;
     }

@@ -278,6 +278,7 @@ public:
     void                    update_ui_from_settings();
 	bool                    show_object_list(bool show) const;
     void                    finish_param_edit();
+    void                    begin_filament_edit();
 
     /**
      * @brief Automatically calculates flushing volumes
