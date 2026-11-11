@@ -188,7 +188,8 @@ void PrintJob::process(Ctl &ctl)
         start_ctx.device_id = m_dev_id;
         start_ctx.source = "print_job";
         start_ctx.index = m_lifecycle_plate_index;
-        start_ctx.slot_mapping = DevMappingUtil::slot_mapping_json(task_ams_mapping2);
+        if (m_lifecycle_plate_index >= 0)
+            start_ctx.slot_mapping = DevMappingUtil::slot_mapping_json(task_ams_mapping2);
         fire_lifecycle_event(LifecycleEvent::PrintJobStarted, start_ctx);
         m_lifecycle_started = true;
     };
@@ -232,7 +233,10 @@ void PrintJob::process(Ctl &ctl)
     else if(m_print_type == "from_sdcard_view") {
         curr_plate_idx = m_print_from_sdc_plate_idx;
     }
-    m_lifecycle_plate_index = curr_plate_idx - 1; // curr_plate_idx is 1-based, 0 when unset
+    // Only a print of this project's own plate is reported with its plate: a file printed from the
+    // printer's storage or a calibration job is not what the project's plates were sliced into.
+    const bool project_plate = m_print_type == "from_normal" && !m_is_calibration_task;
+    m_lifecycle_plate_index = project_plate ? curr_plate_idx - 1 : -1; // curr_plate_idx is 1-based
 
     PartPlate* curr_plate = m_plater->get_partplate_list().get_curr_plate();
     if (curr_plate) {

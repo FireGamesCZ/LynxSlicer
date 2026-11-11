@@ -66,7 +66,11 @@ Last updated: 2026-11-11.
   naming lives in `DevMappingUtil::slot_name`, shared with `device_status`. The printer also
   reports `print.mapping` (uint16 `ams_id << 8 | slot_id`, 0xFFFF unmapped) into
   `MachineObject::print_job_filament_mapping`; nothing uses it yet, and it is firmware
-  dependent. Sent from the SD card: the dialog has no sliced plan of this project.
+  dependent. A print of a file from the printer's storage, or a calibration job, is not
+  one of the project's plates: `PrintJobStarted` then carries plate index -1 and no
+  mapping, so the tracker attaches no plan and asks for manual entry. On firmware
+  without AMS-mapping support the dialog may leave a stale tray in `ams_mapping2`
+  (`SelectMachine.cpp` ~1342); unconfirmed, not handled.
 - Statistics `layers[i]` is printer layer `i + 1` (`M73 L`). Flush at filament changes has
   no layer in the data; `plan.py` spreads it in proportion to extrusion.
 - A user filament preset needs its `.info` sidecar and must inherit from an existing
