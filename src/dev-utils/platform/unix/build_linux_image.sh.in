@@ -186,6 +186,12 @@ echo -n "[9/9] Generating Linux app..."
 
     cp -Rf ../resources "$APPDIR/resources"
 
+    # The Lynx Spools plug-in comes from lynx/, not from resources/, so there is one copy of it in the repo.
+    LYNX_PLUGIN_DIR="$APPDIR/resources/lynx_plugins/lynx_spools"
+    mkdir -p "$LYNX_PLUGIN_DIR/lynx_core"
+    cp -f "@CMAKE_SOURCE_DIR@/lynx/plugin/lynx_spools.py" "$LYNX_PLUGIN_DIR/"
+    cp -f "@CMAKE_SOURCE_DIR@"/lynx/core/lynx_core/*.py "$LYNX_PLUGIN_DIR/lynx_core/"
+
     ORIGINAL_BINARY_LOCATION=""
     if [ -f "src/${CONFIG}/@SLIC3R_APP_CMD@" ]; then
         ORIGINAL_BINARY_LOCATION="$(realpath "src/${CONFIG}/@SLIC3R_APP_CMD@")"

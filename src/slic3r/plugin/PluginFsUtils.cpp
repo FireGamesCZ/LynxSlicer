@@ -14,6 +14,7 @@
 #include <boost/nowide/cstdio.hpp>
 #include <boost/nowide/fstream.hpp>
 #include <ios>
+#include <iterator>
 
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -69,6 +70,122 @@ std::string get_cloud_plugin_dir(const std::string& user_id)
 {
     namespace fs = boost::filesystem;
     return (fs::path(get_orca_plugins_dir()) / PLUGIN_SUBSCRIBED_DIR / user_id).string();
+}
+
+namespace {
+constexpr const char* BUNDLED_MANIFEST_FILE = ".bundled_files";
+
+bool read_whole_file(const boost::filesystem::path& p, std::string& out)
+{
+    boost::nowide::ifstream f(p.string(), std::ios::binary);
+    if (!f)
+        return false;
+    out.assign(std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>());
+    return true;
+}
+
+// Writes through a temporary in the same directory and renames it over the target, so a failed
+// write never leaves a half-written file behind.
+bool write_file_atomic(const boost::filesystem::path& target, const std::string& contents)
+{
+    namespace fs = boost::filesystem;
+    boost::system::error_code ec;
+    fs::create_directories(target.parent_path(), ec);
+    const fs::path tmp = target.string() + ".tmp";
+    {
+        boost::nowide::ofstream out(tmp.string(), std::ios::binary | std::ios::trunc);
+        out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
+        out.flush();
+        if (!out) {
+            out.close();
+            fs::remove(tmp, ec);
+            return false;
+        }
+    }
+    fs::rename(tmp, target, ec);
+    if (ec)
+        fs::remove(tmp, ec);
+    return !ec;
+}
+} // namespace
+
+size_t sync_plugin_folder(const boost::filesystem::path& src_dir, const boost::filesystem::path& dst_dir)
+{
+    namespace fs = boost::filesystem;
+    size_t written = 0;
+    boost::system::error_code ec;
+    if (!fs::is_directory(src_dir, ec))
+        return 0;
+
+    // An existing folder is ours only when a previous sync left its manifest there; anything else
+    // (a symlink, a developer's checkout, a user's copy) is not touched.
+    const fs::path manifest = dst_dir / BUNDLED_MANIFEST_FILE;
+    const bool     existed  = fs::exists(fs::symlink_status(dst_dir, ec));
+    if (existed && (fs::is_symlink(dst_dir, ec) || !fs::is_regular_file(manifest, ec))) {
+        BOOST_LOG_TRIVIAL(info) << "Bundled plugin " << dst_dir.filename().string() << ": " << dst_dir.string()
+                                << " is not managed by the application, leaving it as it is";
+        return 0;
+    }
+
+    std::vector<std::pair<fs::path, std::string>> files; // relative path, content
+    std::string new_manifest;
+    for (fs::recursive_directory_iterator it(src_dir, ec), end; !ec && it != end; it.increment(ec)) {
+        std::string content;
+        if (!fs::is_regular_file(it->status()) || !read_whole_file(it->path(), content))
+            continue;
+        const fs::path rel = fs::relative(it->path(), src_dir);
+        new_manifest += rel.generic_string() + "\n";
+        files.emplace_back(rel, std::move(content));
+    }
+
+    std::string old_manifest;
+    if (existed)
+        read_whole_file(manifest, old_manifest);
+    else {
+        // A fresh install is on; later syncs never touch the sidecar, so the user's choice stays.
+        // Manifest and sidecar go first so an interrupted first sync is completed by the next one.
+        PluginInstallState state;
+        state.installed_from = "local";
+        state.plugin_name    = dst_dir.filename().string();
+        state.enabled        = true;
+        std::lock_guard<std::mutex> lock(install_state_mutex());
+        if (!write_file_atomic(manifest, new_manifest) || !write_install_state(dst_dir, state)) {
+            BOOST_LOG_TRIVIAL(warning) << "Failed to install bundled plugin " << dst_dir.string();
+            return 0;
+        }
+    }
+
+    for (const auto& [rel, content] : files) {
+        const fs::path target = dst_dir / rel;
+        std::string    current;
+        // shortcut: whole files are compared in memory; fine for a few small .py files.
+        if (read_whole_file(target, current) && current == content)
+            continue;
+        if (write_file_atomic(target, content))
+            ++written;
+        else
+            BOOST_LOG_TRIVIAL(warning) << "Failed to install bundled plugin file " << target.string();
+    }
+
+    // Files an earlier sync wrote that the bundle no longer has (e.g. a renamed entry file).
+    std::istringstream old_lines(old_manifest);
+    for (std::string line; std::getline(old_lines, line);) {
+        if (line.empty() || new_manifest.find(line + "\n") != std::string::npos || !is_safe_relative_path(line))
+            continue;
+        fs::remove(dst_dir / line, ec);
+    }
+    if (new_manifest != old_manifest)
+        write_file_atomic(manifest, new_manifest);
+    return written;
+}
+
+void sync_bundled_plugins(const boost::filesystem::path& bundled_dir, const boost::filesystem::path& plugins_dir)
+{
+    namespace fs = boost::filesystem;
+    boost::system::error_code ec;
+    for (fs::directory_iterator it(bundled_dir, ec), end; !ec && it != end; it.increment(ec))
+        if (fs::is_directory(it->status()))
+            sync_plugin_folder(it->path(), plugins_dir / it->path().filename());
 }
 
 boost::filesystem::path resolve_plugin_root_from_descriptor(const PluginDescriptor& descriptor)

@@ -168,6 +168,9 @@ void SendJob::process(Ctl &ctl)
     start_ctx.name = m_project_name;
     start_ctx.device_id = m_dev_id;
     start_ctx.source = "send_job";
+    m_lifecycle_plate_index = job_data.plate_idx >= 0 ? job_data.plate_idx :
+        (job_data.plate_idx == PLATE_CURRENT_IDX ? m_plater->get_partplate_list().get_curr_plate_index() : -1);
+    start_ctx.index = m_lifecycle_plate_index;
     fire_lifecycle_event(LifecycleEvent::SendJobStarted, start_ctx);
     m_lifecycle_started = true;
 
@@ -452,6 +455,7 @@ void SendJob::finalize(bool canceled, std::exception_ptr &eptr)
         finish_ctx.name = m_project_name;
         finish_ctx.device_id = m_dev_id;
         finish_ctx.source = "send_job";
+        finish_ctx.index = m_lifecycle_plate_index;
         finish_ctx.code = canceled ? LifecycleEvtCode::Warn :
             (eptr ? LifecycleEvtCode::Error : (m_job_finished ? LifecycleEvtCode::Ok : LifecycleEvtCode::Error));
         finish_ctx.msg = canceled ? "cancelled" : (eptr ? "exception" :

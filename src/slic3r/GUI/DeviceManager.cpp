@@ -2624,6 +2624,8 @@ void MachineObject::reset()
     network_wired = false;
     dev_connection_name = "";
     job_id_ = "";
+    m_last_job_identity.clear();
+    m_layer_num_current = false;
     jobState_ = 0;
     m_plate_index = -1;
     device_cert_installed = false;
@@ -2652,15 +2654,8 @@ void MachineObject::reset()
 
 void MachineObject::set_print_state(std::string status)
 {
-    const bool changed = (print_status != status);
+    // PrintStateChanged is fired by parse_json once the whole report is parsed.
     print_status = status;
-    if (changed) {
-        LifecycleEventContext ctx;
-        ctx.name  = dev_id;
-        ctx.code  = LifecycleEvtCode::Ok;
-        ctx.msg   = print_status;
-        fire_lifecycle_event(LifecycleEvent::PrintStateChanged, ctx);
-    }
 }
 
 // why: printer agents can report progress without BBL cloud task identity.
@@ -2926,6 +2921,7 @@ int MachineObject::parse_json(std::string tunnel, std::string payload, bool key_
     if (tunnel == "cloud") last_cloud_msg_time_ = std::chrono::system_clock::now();
 
     parse_msg_count++;
+    const std::string state_before = print_status;
     std::chrono::system_clock::time_point clock_start = std::chrono::system_clock::now();
 
     json j_pre;
@@ -3586,6 +3582,7 @@ int MachineObject::parse_json(std::string tunnel, std::string payload, bool key_
                             printer_type = _parse_printer_type(jj["printer_type"].get<std::string>());
                         }
 
+                        m_layer_num_current = true;
                         if (jj.contains("layer_num")) {
                             curr_layer = jj["layer_num"].get<int>();
                         }
@@ -3629,6 +3626,9 @@ int MachineObject::parse_json(std::string tunnel, std::string payload, bool key_
                                 catch (...) {}
                             }
                         }
+                    }
+                    else {
+                        m_layer_num_current = false; // key fields only: curr_layer/total_layers are not refreshed
                     }
 
                     if (jj.contains("project_id")
@@ -4756,6 +4756,24 @@ int MachineObject::parse_json(std::string tunnel, std::string payload, bool key_
     if (diff.count() > 10.0f) {
         BOOST_LOG_TRIVIAL(trace) << "parse_json timeout = " << diff.count();
     }
+    // Fired after the report is parsed (also when parsing stopped on an exception), so a handler
+    // reads this report's job data. A new job under an unchanged state counts as a change too; an
+    // id that is empty or "0" is no job, so an id that flickers empty does not fire.
+    {
+        const std::string job = !job_id_.empty() ? job_id_ : subtask_id_;
+        const bool has_job    = !job.empty() && job != "0";
+        const bool new_job    = has_job && job != m_last_job_identity;
+        if (has_job)
+            m_last_job_identity = job;
+        if (print_status != state_before || new_job) {
+            LifecycleEventContext ctx;
+            ctx.name = dev_id;
+            ctx.code = LifecycleEvtCode::Ok;
+            ctx.msg  = print_status;
+            fire_lifecycle_event(LifecycleEvent::PrintStateChanged, ctx);
+        }
+    }
+
     DeviceManager::update_local_machine(*this, m_manager ? m_manager->get_app_config() : GUI::wxGetApp().app_config);
 
     return 0;

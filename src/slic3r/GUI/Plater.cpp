@@ -13730,6 +13730,15 @@ void Plater::priv::on_process_completed(SlicingProcessCompletedEvent &evt)
         is_finished = true;
     }
 
+    //BBS: set the current plater's slice result to valid
+    // A failed export or upload keeps a complete FFF slice valid, so Print and Export can be run again.
+    if (!this->background_process.empty()) {
+        const bool slice_valid = evt.success() ||
+                                 (evt.export_failed() && printer_technology == ptFFF && this->background_process.finished());
+        this->background_process.get_current_plate()->update_slice_result_valid_state(slice_valid);
+    }
+
+    // Fired once the plate's slice result is marked valid, so a handler can read it.
     {
         Slic3r::LifecycleEventContext ctx;
         if (const PrintBase* print = this->background_process.current_print()) {
@@ -13742,18 +13751,14 @@ void Plater::priv::on_process_completed(SlicingProcessCompletedEvent &evt)
             // and the worker thread asserts it before processing.
             BOOST_LOG_TRIVIAL(warning) << __FUNCTION__ << ": slicing completed without an active print; lifecycle event has no model ID";
         }
+        // The plate the background process just sliced (one per completion, also when slicing all plates).
+        if (!this->background_process.empty())
+            if (PartPlate* plate = this->background_process.get_current_plate())
+                ctx.index = plate->get_index();
         ctx.code = evt.cancelled() ? Slic3r::LifecycleEvtCode::Warn :
                                      (has_error ? Slic3r::LifecycleEvtCode::Error : Slic3r::LifecycleEvtCode::Ok);
         ctx.msg  = evt.cancelled() ? "cancelled" : (has_error ? lifecycle_error_msg : std::string());
         Slic3r::fire_lifecycle_event(Slic3r::LifecycleEvent::SlicingJobComplete, ctx);
-    }
-
-    //BBS: set the current plater's slice result to valid
-    // A failed export or upload keeps a complete FFF slice valid, so Print and Export can be run again.
-    if (!this->background_process.empty()) {
-        const bool slice_valid = evt.success() ||
-                                 (evt.export_failed() && printer_technology == ptFFF && this->background_process.finished());
-        this->background_process.get_current_plate()->update_slice_result_valid_state(slice_valid);
     }
 
     //BBS: update the action button according to the current plate's status

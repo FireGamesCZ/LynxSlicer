@@ -89,6 +89,18 @@ std::vector<std::string> get_plugin_directories(const std::string& cloud_user_id
 // descriptor.enabled. Capabilities are NOT discovered here — a package has none until it is loaded.
 std::vector<PluginDescriptor> discover_plugin_packages(const std::vector<std::string>& dirs, std::string& error);
 
+// Copy the files of src_dir into dst_dir (recursively) when they are missing there or differ in content,
+// each through a temporary file and a rename. The files written are listed in dst_dir/.bundled_files;
+// files listed there that src_dir no longer has are deleted. A dst_dir that exists without that manifest
+// or is a symlink is left completely alone. When dst_dir did not exist, the install-state sidecar is
+// written with enabled = true; it is never touched otherwise, nor is plugin_data. Returns the number
+// of files written.
+size_t sync_plugin_folder(const boost::filesystem::path& src_dir, const boost::filesystem::path& dst_dir);
+
+// Install the plug-ins that ship with the application: every folder under bundled_dir is synced into
+// the same-named folder under plugins_dir. Run before plug-in discovery.
+void sync_bundled_plugins(const boost::filesystem::path& bundled_dir, const boost::filesystem::path& plugins_dir);
+
 bool is_ignored_plugin_directory(const boost::filesystem::path& path);
 bool is_safe_relative_path(const boost::filesystem::path& path);
 bool is_valid_plugin_id(const std::string& id);

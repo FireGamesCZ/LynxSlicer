@@ -242,6 +242,7 @@ int TaskManager::schedule(TaskStateInfo* task)
             start_ctx.device_id = task->params().dev_id;
             start_ctx.job_id = std::to_string(task->task_info_id);
             start_ctx.source = "task_manager";
+            start_ctx.index = task->params().plate_index - 1; // params are 1-based; -1 when unset
             fire_lifecycle_event(LifecycleEvent::PrintJobStarted, start_ctx);
 
             int result = -1;
@@ -282,6 +283,7 @@ int TaskManager::schedule(TaskStateInfo* task)
             finish_ctx.device_id = task->params().dev_id;
             finish_ctx.job_id = std::to_string(task->task_info_id);
             finish_ctx.source = "task_manager";
+            finish_ctx.index = task->params().plate_index - 1;
             finish_ctx.code = result == 0 ? LifecycleEvtCode::Ok :
                 (task->is_canceled() ? LifecycleEvtCode::Warn : LifecycleEvtCode::Error);
             finish_ctx.msg = result == 0 ? "" : (task->is_canceled() ? "cancelled" : "failed");

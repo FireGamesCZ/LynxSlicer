@@ -136,6 +136,33 @@ def add_printer(conn, name, driver, host=None, serial=None, model=None):
                                   serial=serial or None, model=model or None)}
 
 
+def update_printer(conn, printer_id, name=None, serial=None, host=None, model=None):
+    _need(conn, inv.get_printer, printer_id, "printer")
+    if name is not None and not name:
+        raise Bad("name is required")
+    if serial and conn.execute("SELECT 1 FROM printer WHERE serial = ? AND id != ?", (serial, printer_id)).fetchone():
+        raise Bad(f"another printer already has serial {serial}")
+    # an empty text clears the field; None (not given) leaves it alone
+    given = {k: v or None for k, v in dict(name=name, serial=serial, host=host, model=model).items() if v is not None}
+    if not given:
+        raise Bad("nothing to change")
+    with conn:
+        conn.execute(f"UPDATE printer SET {', '.join(f'{k} = ?' for k in given)} WHERE id = ?",
+                     [*given.values(), printer_id])
+    return {"id": printer_id}
+
+
+def list_jobs(conn):
+    rows = conn.execute("SELECT j.id, j.name, p.name AS printer, j.state, j.started_at, j.ended_at FROM job j"
+                        " JOIN printer p ON p.id = j.printer_id ORDER BY j.id DESC LIMIT 20")
+    return [_row(r) for r in rows]
+
+
+def tracking_status(conn):
+    """The plug-in answers this itself when print tracking is unavailable; here it always works."""
+    return {"note": None}
+
+
 def list_spools(conn, include_archived=False):
     out = []
     for s in inv.list_spools(conn, include_archived):
@@ -213,6 +240,11 @@ def plan_push(result):
     return {"push": "plan_check", "result": result}
 
 
+def activity_push(events):
+    """Python -> page: what the print tracker just did (tracker.state_changed events)."""
+    return {"push": "activity", "events": events}
+
+
 def check_plan(conn, printer_id, plan):
     """Per slot of a plan already keyed by printer slot name: the loaded spool and whether it is enough."""
     _need(conn, inv.get_printer, printer_id, "printer")
@@ -239,6 +271,10 @@ OPS = {
     "list_printers": (list_printers, {}, ()),
     "add_printer": (add_printer, dict(name=_text, driver=_driver, host=_text, serial=_text, model=_text),
                     ("name", "driver")),
+    "update_printer": (update_printer, dict(printer_id=_id, name=_text, serial=_text, host=_text, model=_text),
+                       ("printer_id",)),
+    "list_jobs": (list_jobs, {}, ()),
+    "tracking_status": (tracking_status, {}, ()),
     "list_spools": (list_spools, dict(include_archived=_flag), ()),
     "add_spool": (add_spool, dict(filament_id=_id, initial_g=_pos, printer_id=_id, slot=_text),
                   ("filament_id", "initial_g")),

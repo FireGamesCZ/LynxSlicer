@@ -29,6 +29,9 @@ window.orca = (function () {
     }
   };
 })();
+// ?activity=1 injects sample tracker events (spool ids 1 and 2 are looked up if they exist).
+if (new URLSearchParams(location.search).get("activity")) fetch("/push?activity=1").then(function (r) { return r.json(); })
+  .then(function (m) { window.addEventListener("load", function () { orca.deliver(m); }); });
 // ?push=<printer id> asks /push for one plan_check push, like the plug-in sends after a slice.
 var pushId = new URLSearchParams(location.search).get("push");
 if (pushId) fetch("/push?printer=" + encodeURIComponent(pushId)).then(function (r) { return r.json(); })
@@ -75,6 +78,16 @@ def make_server(db_path, port=0):
                 return
             url = urlsplit(self.path)
             query = parse_qs(url.query)
+            if url.path == "/push" and "activity" in query:
+                sample = [
+                    {"event": "job_finished", "printer": "Sample", "printer_id": 1, "job": "benchy", "manual": False,
+                     "deducted": [{"spool_id": 1, "grams": 12.3, "source": "slicer"}], "unassigned": [], "note": ""},
+                    {"event": "job_cancelled", "printer": "Sample", "printer_id": 1, "job": "bracket", "manual": False,
+                     "deducted": [{"spool_id": 1, "grams": 4.2, "source": "estimate"}], "unassigned": [],
+                     "note": "Estimated from layer 31, about one layer either way."},
+                    {"event": "job_finished", "printer": "Sample", "printer_id": 1, "job": "started elsewhere", "manual": True,
+                     "deducted": [], "unassigned": ["ext"], "note": "Usage unknown, enter it manually."}]
+                return self._send(200, "application/json", json.dumps(ui_api.activity_push(sample)).encode())
             if url.path == "/push":
                 sample = {"slots": {"ext": {"total_g": 12.3}}}
                 try:

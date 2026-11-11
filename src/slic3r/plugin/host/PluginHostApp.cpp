@@ -7,12 +7,15 @@
 #include <libslic3r/PresetBundle.hpp>
 #include <libslic3r/AppConfig.hpp>
 #include <libslic3r/Semver.hpp>
+#include <libslic3r/GCode/GCodeStatistics.hpp>
 #include <libslic3r_version.h>
 #include <slic3r/GUI/BuildCommit.hpp>
 #include <slic3r/GUI/DeviceCore/DevManager.h>
+#include <slic3r/GUI/DeviceCore/DevFilaSystem.h>
 #include <slic3r/GUI/DeviceManager.hpp>
 #include <slic3r/GUI/GUI.hpp>
 #include <slic3r/GUI/GUI_App.hpp>
+#include <slic3r/GUI/PartPlate.hpp>
 #include <slic3r/GUI/OpenGLManager.hpp>
 #include <slic3r/GUI/Plater.hpp>
 #include <slic3r/Utils/CloudProvider.hpp>
@@ -149,6 +152,74 @@ py::object selected_printer()
     return std::move(out);
 }
 
+// Live state of a printer by dev_id. Only the dev_id the caller passed is echoed: no name, address,
+// access code or user id, like selected_printer(). The audit hook judges Python-level events and
+// host APIs follow their own contract (see plugin-permissions.md), so there is no permission check.
+py::object device_status(const std::string& dev_id)
+{
+    GUI::GUI_App& app = current_app();
+    require_main_thread("device_status");
+    DeviceManager* devices = app.getDeviceManager();
+    if (devices == nullptr)
+        return py::none();
+    // get_my_machine covers cloud-bound and LAN printers of the live agent; the selected machine
+    // is the fallback for a printer outside that list.
+    MachineObject* machine = devices->get_my_machine(dev_id);
+    if (machine == nullptr) {
+        machine = devices->get_selected_machine();
+        if (machine != nullptr && machine->get_dev_id() != dev_id)
+            machine = nullptr;
+    }
+    if (machine == nullptr)
+        return py::none();
+
+    py::list trays;
+    auto add_tray = [&trays](const std::string& slot, const DevAmsTray& tray) {
+        py::dict t;
+        t["slot"]       = slot;
+        t["type"]       = tray.m_fila_type;
+        // The printer reports RRGGBBAA; anything else is not a colour.
+        t["color"]      = tray.color.size() == 8 ? "#" + tray.color.substr(0, 6) : std::string();
+        t["setting_id"] = tray.setting_id;
+        // -1 for an empty slot or when the printer reported no value.
+        t["remain"]     = tray.m_fila_type.empty() || tray.remain < 0 ? -1 : tray.remain;
+        t["exists"]     = tray.is_exists;
+        trays.append(std::move(t));
+    };
+    if (const std::shared_ptr<DevFilaSystem> fila = machine->GetFilaSystem())
+        for (const auto& ams : fila->GetAmsList())
+            for (const auto& tray : ams.second->GetTrays())
+                add_tray("ams" + ams.first + "-" + tray.first, *tray.second);
+    for (const DevAmsTray& tray : machine->vt_slot)
+        add_tray(tray.id == std::to_string(VIRTUAL_TRAY_MAIN_ID) ? "ext" : "ext2", tray);
+
+    py::dict out;
+    out["state"]        = machine->print_status;
+    out["percent"]      = machine->mc_print_percent;
+    const bool layers_known = machine->is_support_layer_num && machine->m_layer_num_current;
+    out["layer"]        = layers_known && machine->curr_layer > 0 ? py::object(py::int_(machine->curr_layer)) : py::none();
+    out["total_layers"] = layers_known && machine->total_layers > 0 ? py::object(py::int_(machine->total_layers)) : py::none();
+    out["job_name"]     = machine->subtask_name;
+    out["job_id"]       = !machine->job_id_.empty() ? machine->job_id_ : machine->subtask_id_;
+    out["gcode_file"]   = machine->m_gcode_file;
+    out["print_error"]  = machine->print_error;
+    out["trays"]        = std::move(trays);
+    return std::move(out);
+}
+
+py::object slice_statistics(int plate_index)
+{
+    GUI::Plater* plater = current_plater();
+    require_main_thread("slice_statistics");
+    GUI::PartPlateList& plates = plater->get_partplate_list();
+    GUI::PartPlate* plate = plate_index < 0 ? plates.get_curr_plate() : plates.get_plate(plate_index);
+    if (plate == nullptr)
+        throw py::value_error("slice_statistics(): no such plate");
+    if (!plate->is_slice_result_valid() || plate->get_slice_result() == nullptr)
+        return py::none();
+    return py::str(gcode_statistics_json(*plate->get_slice_result()));
+}
+
 } // namespace
 
 // Access to the live GUI application: the Plater and the module-level
@@ -185,6 +256,15 @@ void host_bindings::register_app(py::module_& host)
              "Agent, model_id, connection ('lan' or 'cloud'), online, connected and firmware of the printer selected in the "
              "device list; model_id and firmware are empty for non-Bambu agents. None when none is selected. Print hosts "
              "configured in the printer preset (OctoPrint and the like) are not in the device list.");
+    host.def("device_status", &device_status, py::arg("dev_id"),
+             "Live state of the printer dev_id, or None when it is unknown: state (as the printer reports it, e.g. IDLE, "
+             "RUNNING, PAUSE, FINISH, FAILED), percent, layer and total_layers (None when unknown: layer 0, no layer "
+             "support, or the printer was only parsed for key fields), job_name, job_id, gcode_file, print_error and "
+             "trays, a list of {slot, type, color ('#RRGGBB' or ''), setting_id, remain (-1 for an empty slot or no reported value), exists}. Slots "
+             "are 'ext', 'ext2' and 'ams<ams id>-<tray id>'. Call it from the UI thread.");
+    host.def("slice_statistics", &slice_statistics, py::arg("plate_index") = -1,
+             "The statistics JSON of the sliced G-code of a plate (-1 for the current plate), or None when the plate has no "
+             "valid slice result. Call it from the UI thread.");
 }
 
 } // namespace Slic3r

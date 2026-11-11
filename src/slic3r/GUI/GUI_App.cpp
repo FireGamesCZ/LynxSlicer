@@ -184,6 +184,7 @@
 #include "libslic3r/InstanceLock.hpp"
 #include "libslic3r/Thread.hpp"
 #include "libslic3r/miniz_extension.hpp"
+#include "slic3r/plugin/PluginFsUtils.hpp"
 #include "slic3r/plugin/PluginManager.hpp"
 #include "slic3r/plugin/host/PluginHostUi.hpp"
 #include "slic3r/plugin/PythonInterpreter.hpp"
@@ -3631,6 +3632,9 @@ bool GUI_App::on_init_inner()
     if (!preset_folder.empty()) {
         plugin_mgr.set_cloud_user(preset_folder);
     }
+
+    // Plug-ins shipped with the application (resources/lynx_plugins) go into the user's plugin folder first.
+    sync_bundled_plugins(boost::filesystem::path(Slic3r::resources_dir()) / "lynx_plugins", get_orca_plugins_dir());
 
     plugin_mgr.discover_plugins(false, true);
 

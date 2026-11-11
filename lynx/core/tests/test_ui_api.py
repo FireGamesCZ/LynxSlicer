@@ -156,6 +156,26 @@ class TestCheckPlan(Base):
         self.err("check_plan", "total_g", printer_id=self.p, plan={"slots": {"ext": {}}})
 
 
+class TestPrinterAndJobs(Base):
+    def test_update_printer(self):
+        a = self.ok("add_printer", name="A", driver="bambu")["id"]
+        b = self.ok("add_printer", name="B", driver="bambu", serial="S2")["id"]
+        self.ok("update_printer", printer_id=a, serial=" S1 ")
+        self.err("update_printer", "already has serial", printer_id=a, serial="S2")
+        self.err("update_printer", "nothing to change", printer_id=a)
+        self.err("update_printer", "does not exist", printer_id=99, serial="x")
+        self.err("update_printer", "name is required", printer_id=a, name="")
+        self.ok("update_printer", printer_id=b, serial="")
+        self.assertEqual([p["serial"] for p in self.ok("list_printers")], ["S1", None])
+
+    def test_list_jobs_and_status(self):
+        p = self.ok("add_printer", name="A", driver="bambu")["id"]
+        inv.start_job(self.c, p, "cube", {"slots": {}})
+        j, = self.ok("list_jobs")
+        self.assertEqual((j["name"], j["printer"], j["state"]), ("cube", "A", "running"))
+        self.assertEqual(self.ok("tracking_status"), {"note": None})
+
+
 class TestPush(unittest.TestCase):
     def test_dev_server_push_and_page_script(self):
         import json, os, shutil, subprocess, sys, tempfile, threading, urllib.request
@@ -181,6 +201,8 @@ class TestPush(unittest.TestCase):
             msg = json.load(urllib.request.urlopen(f"{base}/push?printer={pid}"))
             self.assertEqual(msg["push"], "plan_check")
             self.assertEqual(msg["result"]["slots"][0]["spool_id"], None)  # no spool in the sample slot
+            act = json.load(urllib.request.urlopen(f"{base}/push?activity=1"))
+            self.assertEqual((act["push"], len(act["events"])), ("activity", 3))
             self.assertIn("push=", urllib.request.urlopen(f"{base}/?push={pid}").read().decode())
             script = os.path.join(tmp, "page.js")
             body = spools_page.PAGE.split("<script>", 1)[1].split("</script>", 1)[0]

@@ -98,7 +98,9 @@ namespace Slic3r
         // exhaustive across versions.
         std::string source;
 
-        // Plate, object, or volume index when the source uses an index rather than a stable id.
+        // Plate, object, or volume index (0-based) when the source uses an index rather than a stable id.
+        // SlicingJobComplete: the plate that was sliced. PrintJobStarted/Finished and SendJobStarted/
+        // Finished: the plate being sent; -1 when unknown or, for a send job, when all plates are sent.
         int index = -1;
 
         // Aggregate project dirty state for ProjectDirtyChanged.

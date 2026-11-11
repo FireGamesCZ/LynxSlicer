@@ -53,19 +53,28 @@ PAGE = r"""<!doctype html>
   #lastslice { border:1px solid var(--line); border-radius:6px; padding:8px 12px; margin-bottom:12px; }
   #lastslice.bad { border-color:var(--warn); }
   .empty-note { color:var(--muted); }
+  #activity ul { margin:8px 0; } li.event { border:1px solid var(--line); border-radius:6px; padding:6px 10px; }
+  li.event.manual { border-color:var(--warn); } .tag { font-weight:600; } .est { color:var(--warn); }
 </style></head>
 <body><main>
 <h1 tabindex="-1">Spools</h1>
 <div id="error" role="alert" hidden></div>
 <div id="lastslice" role="status" hidden></div>
 <div id="forms"></div>
+<details id="activity" open><summary>Activity</summary>
+<p id="tracking" class="empty-note" role="status" hidden></p>
+<ul id="events" aria-label="Print activity" aria-live="polite"></ul>
+<p id="noevents" class="empty-note">No prints tracked yet.</p>
+<table id="jobs" aria-label="Recent prints"><thead><tr><th>Print</th><th>Printer</th><th>State</th><th>Started</th><th>Ended</th></tr></thead><tbody></tbody></table>
+</details>
 <ul id="spools" aria-label="Spools"></ul>
 <p id="none" class="empty-note" hidden>No spools yet. Add a filament, then a spool.</p>
 </main>
 <script>
 (function () {
   "use strict";
-  var S = { filaments: [], printers: [], spools: [], open: null, usage: [], focus: null };
+  var S = { filaments: [], printers: [], spools: [], jobs: [], events: [], open: null, usage: [], focus: null };
+  var evSeq = 0;
   var pending = {}, nextId = 1;
 
   function call(op, args, done, fail) {
@@ -87,6 +96,7 @@ PAGE = r"""<!doctype html>
   }
   orca.onMessage(function (m) {
     if (m && m.push === "plan_check") return showPlanCheck(m.result);
+    if (m && m.push === "activity") return addEvents(m.events || []);
     var p = m && pending[m.id];
     if (!p) return;
     delete pending[m.id];
@@ -126,10 +136,63 @@ PAGE = r"""<!doctype html>
     call("list_filaments", {}, function (f) { S.filaments = f;
       call("list_printers", {}, function (p) { S.printers = p;
         call("list_spools", {}, function (s) { S.spools = s;
-          if (S.open && S.open.kind === "history")
-            call("list_usage", { spool_id: S.open.id }, function (u) { S.usage = u; render(); });
-          else render();
-        }); }); });
+          call("list_jobs", {}, function (j) { S.jobs = j;
+            if (S.open && S.open.kind === "history")
+              call("list_usage", { spool_id: S.open.id }, function (u) { S.usage = u; render(); });
+            else render();
+          }); }); }); });
+  }
+
+  var LABEL = { job_started: "Started", job_finished: "Finished", job_failed: "Failed", job_cancelled: "Cancelled", job_lost: "Ended unseen" };
+  function spoolName(id) {
+    var s = S.spools.filter(function (x) { return x.id === id; })[0];
+    return s ? [s.vendor, s.material, s.name].filter(Boolean).join(" ") : "spool #" + id;
+  }
+  function addEvents(evs) {
+    evs.forEach(function (e) { e.seq = ++evSeq; S.events.unshift(e); });
+    S.events.length = Math.min(S.events.length, 30);
+    refresh(); // spool amounts changed
+  }
+  function openUse(id) {
+    S.open = { id: id, kind: "use" }; S.focus = { key: key(id, "use"), panel: true }; refresh();
+  }
+  function renderActivity() {
+    var list = document.getElementById("events"), had = document.activeElement && document.activeElement.getAttribute("data-ek");
+    list.textContent = "";
+    document.getElementById("noevents").hidden = S.events.length > 0;
+    S.events.forEach(function (e) {
+      var lines = [];
+      (e.deducted || []).forEach(function (d) {
+        var est = d.source === "estimate";
+        lines.push(el("div", {}, g(d.grams) + " from " + spoolName(d.spool_id) + " ",
+          el("span", { className: est ? "est" : "sub" }, est ? "(estimate)" : "(" + d.source + ")"), " ",
+          el("button", { type: "button", "data-ek": e.seq + "-" + d.spool_id, onclick: function () { openUse(d.spool_id); } }, "Correct usage")));
+      });
+      if (e.note) lines.push(el("div", { className: "sub" }, e.note));
+      if (e.manual || (e.unassigned || []).length) {
+        var loaded = S.spools.filter(function (s) { return s.printer_id === e.printer_id; });
+        var row = el("div", {}, "Needs your input: ");
+        loaded.forEach(function (s) {
+          row.appendChild(el("button", { type: "button", "data-ek": e.seq + "-u" + s.id, onclick: function () { openUse(s.id); } },
+            "Log usage for " + spoolName(s.id)));
+          row.appendChild(document.createTextNode(" "));
+        });
+        if (!loaded.length) row.appendChild(document.createTextNode("assign a spool to this printer, then log the usage."));
+        lines.push(row);
+      }
+      list.appendChild(el("li", { className: "event" + (e.manual ? " manual" : "") },
+        el("span", { className: "tag" }, LABEL[e.event] || e.event), " ", (e.job || "") + " on " + (e.printer || ""), ...lines));
+    });
+    var back = had && list.querySelector('[data-ek="' + had + '"]');
+    if (back) back.focus();
+    var tb = document.querySelector("#jobs tbody");
+    tb.textContent = "";
+    S.jobs.forEach(function (j) {
+      function t(v) { return (v || "").replace("T", " ").slice(0, 16); }
+      tb.appendChild(el("tr", {}, el("td", {}, j.name || ""), el("td", {}, j.printer), el("td", {}, j.state),
+        el("td", {}, t(j.started_at)), el("td", {}, t(j.ended_at))));
+    });
+    document.getElementById("jobs").hidden = S.jobs.length === 0;
   }
   function key(id, kind) { return "s" + id + "-" + kind; }
   // Run an op from a panel button, close the panel, return focus to the control that opened it.
@@ -188,15 +251,26 @@ PAGE = r"""<!doctype html>
     var spoolNote = el("p", { className: "empty-note" }, "Add a filament first.");
     box.appendChild(el("details", {}, el("summary", {}, "Add spool"), spoolNote, spoolForm));
 
-    var pName = el("input", { required: true }), pDrv = el("select", {}, option("bambu", "Bambu"), option("prusalink", "PrusaLink"));
+    var eP = printerSelect(), eSer = el("input", { placeholder: "serial number" }), eBtn = el("button", { type: "submit", className: "primary" }, "Save serial");
+    eP.firstChild.remove(); // no "Not loaded" entry here
+    eP.addEventListener("change", function () { var p = S.printers.filter(function (x) { return String(x.id) === eP.value; })[0]; eSer.value = p && p.serial || ""; });
+    box.appendChild(el("details", {}, el("summary", {}, "Printer serial (print tracking)"),
+      el("p", { className: "sub" }, "Prints are matched to a printer by its serial number (OrcaSlicer's device id). Leave empty to stop tracking it."),
+      el("form", { onsubmit: function (e) {
+        e.preventDefault();
+        if (eP.value === "") return;
+        send(eBtn, "update_printer", { printer_id: Number(eP.value), serial: eSer.value.trim() }, refresh);
+      } }, field("Printer", eP), field("Serial", eSer), eBtn)));
+
+    var pName = el("input", { required: true }), pSer = el("input"), pDrv = el("select", {}, option("bambu", "Bambu"), option("prusalink", "PrusaLink"));
     var addPrinter = el("button", { type: "submit", className: "primary" }, "Add printer");
     box.appendChild(el("details", {}, el("summary", {}, "Add printer"),
       el("form", { onsubmit: function (e) {
         e.preventDefault();
         var form = e.target;
-        send(addPrinter, "add_printer", { name: str(pName.value), driver: pDrv.value }, function () { form.reset(); refresh(); });
-      } }, field("Name", pName), field("Driver", pDrv), addPrinter)));
-    F = { sFil: sFil, sPr: sPr, spoolForm: spoolForm, spoolNote: spoolNote };
+        send(addPrinter, "add_printer", { name: str(pName.value), driver: pDrv.value, serial: str(pSer.value) }, function () { form.reset(); refresh(); });
+      } }, field("Name", pName), field("Driver", pDrv), field("Serial (optional)", pSer), addPrinter)));
+    F = { eP: eP, eSer: eSer, sFil: sFil, sPr: sPr, spoolForm: spoolForm, spoolNote: spoolNote };
   }
 
   function updateForms() {
@@ -208,6 +282,11 @@ PAGE = r"""<!doctype html>
     F.sFil.value = v;
     if (F.sFil.selectedIndex < 0 && S.filaments.length) F.sFil.selectedIndex = 0;
     fillPrinters(F.sPr);
+    var ev = F.eP.value;
+    F.eP.textContent = "";
+    S.printers.forEach(function (p) { F.eP.appendChild(option(p.id, p.name)); });
+    F.eP.value = ev;
+    if (F.eP.selectedIndex < 0 && S.printers.length) { F.eP.selectedIndex = 0; F.eP.dispatchEvent(new Event("change")); }
     F.spoolForm.hidden = S.filaments.length === 0;
     F.spoolNote.hidden = S.filaments.length > 0;
   }
@@ -260,6 +339,7 @@ PAGE = r"""<!doctype html>
 
   function render() {
     updateForms();
+    renderActivity();
     var list = document.getElementById("spools");
     list.textContent = "";
     document.getElementById("none").hidden = S.spools.length > 0;
@@ -294,6 +374,9 @@ PAGE = r"""<!doctype html>
   }
 
   buildForms();
+  call("tracking_status", {}, function (r) {
+    var t = document.getElementById("tracking"); t.textContent = r.note || ""; t.hidden = !r.note;
+  });
   refresh();
 })();
 </script></body></html>

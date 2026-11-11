@@ -25,6 +25,7 @@
 
 #include <fstream>
 #include <iterator>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -815,4 +816,76 @@ TEST_CASE("extract_zip_to_directory rejects an entry that escapes the destinatio
     CHECK_FALSE(extract_zip_to_directory(wheel, dir.path() / "out", error));
     CHECK_THAT(error, Catch::Matchers::ContainsSubstring("escapes the plugin package"));
     CHECK_FALSE(fs::exists(dir.path() / "escape.txt"));
+}
+
+TEST_CASE("sync_plugin_folder installs a bundled plugin without touching the user's state", "[PluginInstall][PluginFsUtils]")
+{
+    ScopedTemporaryDir tmp("orca-bundled-plugin");
+    const fs::path     src = tmp.path() / "src";
+    const fs::path     dst = tmp.path() / "dst";
+    write_py_file(src, "plug.py", "v1");
+    write_py_file(src / "pkg", "mod.py", "m1");
+
+    // A fresh install is enabled.
+    REQUIRE(sync_plugin_folder(src, dst) == 2);
+    CHECK(read_sidecar_text(dst, "plug.py") == "v1");
+    CHECK(read_sidecar_text(dst / "pkg", "mod.py") == "m1");
+    PluginInstallState state;
+    {
+        std::lock_guard<std::mutex> lock(install_state_mutex());
+        REQUIRE(read_install_state(dst, state));
+    }
+    CHECK(state.enabled);
+
+    // The user disables it and the plug-in stores data.
+    write_raw_sidecar_text(dst, "{\"enabled\":false}");
+    write_py_file(dst / PLUGIN_DATA_DIR, "spools.json", "user data");
+
+    SECTION("unchanged content is not written again")
+    {
+        CHECK(sync_plugin_folder(src, dst) == 0);
+    }
+    SECTION("a changed file is updated, the rest is left alone")
+    {
+        write_py_file(src, "plug.py", "v2");
+        CHECK(sync_plugin_folder(src, dst) == 1);
+        CHECK(read_sidecar_text(dst, "plug.py") == "v2");
+    }
+    SECTION("a renamed entry file leaves no leftover")
+    {
+        fs::remove(src / "plug.py");
+        write_py_file(src, "plug2.py", "v1");
+        sync_plugin_folder(src, dst);
+        CHECK_FALSE(fs::exists(dst / "plug.py"));
+        CHECK(read_sidecar_text(dst, "plug2.py") == "v1");
+        CHECK(fs::exists(dst / "pkg" / "mod.py"));
+    }
+    CHECK(read_sidecar_text(dst) == "{\"enabled\":false}"); // a later sync never re-enables
+    CHECK(read_sidecar_text(dst / PLUGIN_DATA_DIR, "spools.json") == "user data");
+}
+
+TEST_CASE("sync_plugin_folder leaves a folder it did not create alone", "[PluginInstall][PluginFsUtils]")
+{
+    ScopedTemporaryDir tmp("orca-bundled-plugin-own");
+    const fs::path     src = tmp.path() / "src";
+    write_py_file(src, "plug.py", "bundled");
+
+    SECTION("a destination without a manifest")
+    {
+        const fs::path dst = tmp.path() / "dst";
+        write_py_file(dst, "plug.py", "mine");
+        CHECK(sync_plugin_folder(src, dst) == 0);
+        CHECK(read_sidecar_text(dst, "plug.py") == "mine");
+        CHECK_FALSE(fs::exists(dst / ".install_state.json"));
+    }
+#ifndef _WIN32
+    SECTION("a symlinked destination")
+    {
+        const fs::path real = tmp.path() / "real";
+        write_py_file(real, "plug.py", "mine");
+        fs::create_directory_symlink(real, tmp.path() / "link");
+        CHECK(sync_plugin_folder(src, tmp.path() / "link") == 0);
+        CHECK(read_sidecar_text(real, "plug.py") == "mine");
+    }
+#endif
 }

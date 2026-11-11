@@ -26,6 +26,7 @@ class SendJob : public Job
     bool                m_job_finished{ false };
     bool                m_lifecycle_started{ false };
     bool                m_lifecycle_finished{ false };
+    int                 m_lifecycle_plate_index{ -1 }; // 0-based plate being sent, -1 for all plates
     int                 m_print_job_completed_id = 0;
     bool                m_is_check_mode{false};
     bool                m_check_and_continue{false};

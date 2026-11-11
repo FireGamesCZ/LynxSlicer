@@ -1282,9 +1282,18 @@ if (NOT WIN32 AND NOT APPLE)
     configure_file(${LIBDIR}/dev-utils/platform/unix/build_appimage.sh.in ${CMAKE_CURRENT_BINARY_DIR}/build_appimage.sh USE_SOURCE_PERMISSIONS @ONLY)
 endif()
 
+# The Lynx Spools plug-in ships under <resources>/lynx_plugins; the app copies it into the user's plugin folder at start.
+function(orca_install_lynx_plugin resources_dest)
+    set(_dest "${resources_dest}/lynx_plugins/lynx_spools")
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/lynx/plugin/lynx_spools.py" DESTINATION "${_dest}")
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/lynx/core/lynx_core" DESTINATION "${_dest}"
+        FILES_MATCHING PATTERN "*.py" PATTERN "__pycache__" EXCLUDE)
+endfunction()
+
 # Resources install target, configure fhs.hpp on UNIX
 if (WIN32)
     install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION "./resources")
+    orca_install_lynx_plugin("./resources")
     if(ORCA_BUNDLED_UV_EXECUTABLE)
         install(PROGRAMS "${ORCA_BUNDLED_UV_EXECUTABLE}" DESTINATION "./resources/tools/uv" RENAME "${ORCA_BUNDLED_UV_FILENAME}")
     endif()
@@ -1305,6 +1314,7 @@ elseif (SLIC3R_FHS)
     install(DIRECTORY ${SLIC3R_RESOURCES_DIR}/ DESTINATION ${SLIC3R_FHS_RESOURCES}
         PATTERN "*/udev" EXCLUDE
     )
+    orca_install_lynx_plugin("${SLIC3R_FHS_RESOURCES}")
     if(ORCA_BUNDLED_UV_EXECUTABLE)
         # A Flatpak build finds uv at this exact path, installed by the orca_deps
         # module before this one configures (see ORCA_UV_FLATPAK_BINARY above).
@@ -1322,12 +1332,14 @@ elseif (SLIC3R_FHS)
     endforeach()
 elseif (CMAKE_MACOSX_BUNDLE)
     # install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/OrcaSlicer.app/Contents/resources")
+    orca_install_lynx_plugin("${CMAKE_INSTALL_PREFIX}/OrcaSlicer.app/Contents/Resources")
     if(ORCA_BUNDLED_UV_EXECUTABLE)
         install(PROGRAMS "${ORCA_BUNDLED_UV_EXECUTABLE}" DESTINATION "${CMAKE_INSTALL_PREFIX}/OrcaSlicer.app/Contents/Resources/tools/uv" RENAME "${ORCA_BUNDLED_UV_FILENAME}")
     endif()
 else ()
     install(FILES src/dev-utils/platform/unix/com.orcaslicer.OrcaSlicer.desktop DESTINATION ${CMAKE_INSTALL_PREFIX}/resources/applications)
     install(DIRECTORY "${SLIC3R_RESOURCES_DIR}/" DESTINATION "${CMAKE_INSTALL_PREFIX}/resources")
+    orca_install_lynx_plugin("${CMAKE_INSTALL_PREFIX}/resources")
     if(ORCA_BUNDLED_UV_EXECUTABLE)
         install(PROGRAMS "${ORCA_BUNDLED_UV_EXECUTABLE}" DESTINATION "${CMAKE_INSTALL_PREFIX}/resources/tools/uv" RENAME "${ORCA_BUNDLED_UV_FILENAME}")
     endif()

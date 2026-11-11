@@ -4,7 +4,15 @@ Shows and edits the spool inventory in a tab. All logic is in `lynx/core/lynx_co
 (`ui_api.py` handles the page's requests, `spools_page.py` is the page); `lynx_spools.py`
 only wires them to OrcaSlicer. It requests no permissions.
 
-## Install into OrcaSlicer 2.5
+## Install
+
+In the LynxSlicer fork the application installs the plug-in itself into `orca_plugins/lynx_spools`
+(bundled, managed by a manifest it writes there). A folder without that manifest, such as one made by
+hand as below, is left alone. Print tracking (the activity list and automatic deduction) only works in
+the fork's build: stock OrcaSlicer 2.5 lacks `device_status` and `slice_statistics`, so there the plug-in
+is an inventory only.
+
+### Manual side-load (stock OrcaSlicer 2.5, or to test changes)
 
 The Plugins dialog copies only the single `.py` file, so `lynx_core` would be missing. Instead drop a
 folder into the plug-in directory by hand (it must hold exactly one `.py`):

@@ -473,6 +473,7 @@ public:
     int     curr_layer = 0;
     int     total_layers = 0;
     bool    is_support_layer_num { false };
+    bool    m_layer_num_current { false }; // curr_layer/total_layers come from the latest report (not a key-field-only one)
     bool    nozzle_blob_detection_enabled{ false };
     time_t  nozzle_blob_detection_hold_start = 0;
 
@@ -701,6 +702,7 @@ public:
     std::string  subtask_id_;
     std::string  job_id_;
     std::string  last_subtask_id_;
+    std::string  m_last_job_identity; // last non-empty job_id_/subtask_id_ seen by parse_json, for PrintStateChanged
     // note: printer-agent-supplied thumbnail url, empty when the agent supplies none.
     std::string  m_agent_thumbnail_url;
     BBLSliceInfo* slice_info {nullptr};
