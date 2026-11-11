@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <boost/log/trivial.hpp>
 #include <limits>
+#include <nlohmann/json.hpp>
 
 #include <map>
 #include <vector>
@@ -22,6 +23,28 @@
 
 namespace Slic3r
 {
+    std::string DevMappingUtil::slot_name(const std::string& ams_id, const std::string& tray_id)
+    {
+        if (ams_id == std::to_string(VIRTUAL_TRAY_MAIN_ID)) return "ext";
+        if (ams_id == std::to_string(VIRTUAL_TRAY_DEPUTY_ID)) return "ext2";
+        return "ams" + ams_id + "-" + tray_id;
+    }
+
+    std::string DevMappingUtil::slot_mapping_json(const std::string& ams_mapping2)
+    {
+        nlohmann::json out = nlohmann::json::object();
+        const nlohmann::json in = nlohmann::json::parse(ams_mapping2, nullptr, false);
+        if (!in.is_array()) return {};
+        for (size_t i = 0; i < in.size(); ++i) {
+            const nlohmann::json& ams = in[i].is_object() ? in[i].value("ams_id", nlohmann::json()) : nlohmann::json();
+            const nlohmann::json& tray = in[i].is_object() ? in[i].value("slot_id", nlohmann::json()) : nlohmann::json();
+            if (!ams.is_number_integer() || !tray.is_number_integer()) continue;
+            if (tray.get<int>() == VIRTUAL_TRAY_MAIN_ID) continue; // the default of a filament that was not mapped
+            out[std::to_string(i + 1)] = slot_name(std::to_string(ams.get<int>()), std::to_string(tray.get<int>()));
+        }
+        return out.empty() ? std::string() : out.dump();
+    }
+
     bool DevMappingUtil::is_valid_mapping_result(const MachineObject* obj, std::vector<FilamentInfo>& result, bool check_empty_slot)
     {
         if (result.empty()) return false;

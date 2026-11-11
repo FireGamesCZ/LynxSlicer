@@ -3,6 +3,7 @@
 #include "bambu_networking.hpp"
 #include "libslic3r/Thread.hpp"
 #include "libslic3r/LifecycleEvents.hpp"
+#include "slic3r/GUI/DeviceCore/DevMapping.h"
 #include "nlohmann/json.hpp"
 #include "MainFrame.hpp"
 #include "GUI_App.hpp"
@@ -243,6 +244,7 @@ int TaskManager::schedule(TaskStateInfo* task)
             start_ctx.job_id = std::to_string(task->task_info_id);
             start_ctx.source = "task_manager";
             start_ctx.index = task->params().plate_index - 1; // params are 1-based; -1 when unset
+            start_ctx.slot_mapping = DevMappingUtil::slot_mapping_json(task->params().ams_mapping2);
             fire_lifecycle_event(LifecycleEvent::PrintJobStarted, start_ctx);
 
             int result = -1;

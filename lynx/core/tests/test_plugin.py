@@ -79,6 +79,14 @@ class TestPlugin(unittest.TestCase):
         self.page.on_lifecycle_event(Ev.PrintStateChanged, ctx(name="SN", msg="RUNNING"))
         return self.page.posted[0]["events"][0]
 
+    def test_slot_mapping_from_the_job_event_reaches_the_tracker(self):
+        self.tracking_host()
+        self.page.on_lifecycle_event(Ev.SlicingJobComplete, ctx(code=types.SimpleNamespace(name="Ok")))
+        self.page.on_lifecycle_event(Ev.PrintJobStarted, ctx(device_id="SN", name="cube", slot_mapping='{"1": "ams0-2"}'))
+        self.assertEqual(self.page.tracker._pending["SN"][3], {"1": "ams0-2"})
+        self.page.on_lifecycle_event(Ev.PrintJobStarted, ctx(device_id="SN", name="cube", slot_mapping=""))
+        self.assertEqual(self.page.tracker._pending["SN"][3], {})  # no mapping: the old behaviour
+
     def test_upload_only_creates_no_pending_plan(self):
         self.assertTrue(self.run_print(Ev.SendJobStarted)["manual"])
 

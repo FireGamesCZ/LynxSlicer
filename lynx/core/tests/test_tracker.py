@@ -8,6 +8,9 @@ from lynx_core.tracker import PENDING_TTL_S, Tracker
 STATS = {"summary": {"filaments": [{"id": 0, "weight": 10.0}]},
          "layers": [{"weight": 2.0} for _ in range(5)]}
 STATS2 = {"summary": {"filaments": [{"id": 0, "weight": 7.0}]}, "layers": [{"weight": 7.0}]}
+STATS_2F = {"summary": {"filaments": [{"id": 1, "weight": 10.0}, {"id": 2, "weight": 6.0}]},
+            "layers": [{"weight": 3.2, "filaments": [{"id": 1, "weight": 2.0}, {"id": 2, "weight": 1.2}]}
+                       for _ in range(5)]}
 AMS = [{"slot": "ams0-1", "exists": True}]
 
 
@@ -162,6 +165,49 @@ class TestTracker(unittest.TestCase):
         self.assertEqual(ev["unassigned"], ["0"])
         ev, = self.st("FINISH")
         self.assertEqual((ev["deducted"], ev["unassigned"]), ([], ["0"]))
+
+    def ams_print(self, mapping, trays=AMS):
+        fil = inv.add_filament(self.conn, material="PLA")
+        self.a0 = inv.add_spool(self.conn, filament_id=fil, initial_g=500, printer_id=self.pid, slot="ams0-0")
+        self.a1 = inv.add_spool(self.conn, filament_id=fil, initial_g=500, printer_id=self.pid, slot="ams0-1")
+        self.t.sliced(STATS_2F, 0)
+        self.t.job_sent("SN1", "cube", 0, mapping)
+        return self.st("RUNNING", trays=trays)[0]
+
+    def test_mapping_charges_each_filament_its_own_spool(self):
+        self.ams_print({"1": "ams0-1", "2": "ams0-0"})
+        ev, = self.st("FINISH", layer=5)
+        self.assertEqual({(d["spool_id"], d["grams"]) for d in ev["deducted"]}, {(self.a1, 10.0), (self.a0, 6.0)})
+
+    def test_mapping_cancel_estimates_per_spool(self):
+        self.ams_print({"1": "ams0-0", "2": "ams0-1"})
+        ev, = self.st("FAILED", layer=3, print_error=CANCEL_ERROR)
+        self.assertEqual({(d["spool_id"], d["grams"], d["source"]) for d in ev["deducted"]},
+                         {(self.a0, 5.0, "estimate"), (self.a1, 3.0, "estimate")})
+
+    def test_mapping_to_slot_without_spool_is_unassigned(self):
+        ev = self.ams_print({"1": "ams0-1", "2": "ams0-2"})
+        self.assertEqual(ev["unassigned"], ["ams0-2"])
+        ev, = self.st("FINISH", layer=5)
+        self.assertEqual([(d["spool_id"], d["grams"]) for d in ev["deducted"]], [(self.a1, 10.0)])
+        self.assertEqual(ev["unassigned"], ["ams0-2"])
+
+    def test_filament_missing_from_mapping_or_sharing_a_slot_is_unassigned(self):
+        self.assertEqual(self.ams_print({"1": "ams0-1"})["unassigned"], ["2"])
+        self.st("FINISH")
+        self.assertEqual(self.ams_print({"1": "ams0-1", "2": "ams0-1"}, trays=AMS)["unassigned"], ["1", "2"])
+
+    def test_mapping_absent_keeps_current_behaviour(self):
+        self.assertEqual(self.ams_print(None)["unassigned"], ["1", "2"])
+        self.st("FINISH")
+        self.assertEqual(self.ams_print({})["unassigned"], ["1", "2"])
+
+    def test_mapping_survives_restart(self):
+        self.ams_print({"1": "ams0-1", "2": "ams0-0"})
+        ev, = Tracker(self.conn).state_changed("SN1", status(layer=5), "FINISH")
+        self.assertEqual({d["spool_id"] for d in ev["deducted"]}, {self.a0, self.a1})
+        plan = inv.json.loads(self.conn.execute("SELECT plan_json FROM job").fetchone()[0])
+        self.assertEqual(plan["slot_mapping"], {"1": "ams0-1", "2": "ams0-0"})
 
     def test_sliced_returns_check_for_single_printer(self):
         r = self.t.sliced(STATS)

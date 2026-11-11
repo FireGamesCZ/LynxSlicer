@@ -34,9 +34,13 @@ def _same_name(a, b):
     return not a or not b or a in b or b in a
 
 
-def _slot_plan(plan, trays):
-    # shortcut: one filament and no AMS -> the external spool; every other plate stays keyed by filament id,
-    # so its slots come back unassigned and the user is asked. Replace when AMS mapping is available.
+def _slot_plan(plan, trays, mapping=None):
+    if mapping:  # filament id -> slot name, from the print dialog
+        names = [mapping.get(k) for k in plan["slots"]]
+        # A filament without a slot, or two on one slot, keeps its id: unassigned, the user is asked.
+        return planmod.remap_plan(plan, {k: n if n and names.count(n) == 1 else k for k, n in zip(plan["slots"], names)})
+    # shortcut: one filament and no AMS -> the external spool; with no mapping every other plate stays keyed by
+    # filament id, so its slots come back unassigned and the user is asked.
     if len(plan["slots"]) == 1 and not any(t["slot"].startswith("ams") and t.get("exists", True) for t in trays):
         return planmod.remap_plan(plan, planmod.default_mapping(plan))
     return plan
@@ -46,7 +50,7 @@ class Tracker:
     def __init__(self, conn, clock=time.time):
         self.conn, self.clock = conn, clock
         self.plans = {}  # plate index -> sliced plan, keyed by filament id
-        self._pending = {}  # device id -> (plan, project name, time sent)
+        self._pending = {}  # device id -> (plan, project name, time sent, slot mapping or None)
         self._lock = threading.Lock()  # guards plans and _pending: job_sent runs on a worker thread
 
     def clear(self):
@@ -64,11 +68,11 @@ class Tracker:
             return None  # which printer it is for is not known before sending
         return ui_api.check_plan(self.conn, printers[0]["id"], _slot_plan(plan, []))
 
-    def job_sent(self, dev_id, name, plate_index=-1):
+    def job_sent(self, dev_id, name, plate_index=-1, mapping=None):
         with self._lock:
             plan = self.plans.get(plate_index) if plate_index >= 0 else None  # unknown plate: do not guess
             if plan:
-                self._pending[dev_id] = (plan, name, self.clock())
+                self._pending[dev_id] = (plan, name, self.clock(), mapping)
             else:
                 self._pending.pop(dev_id, None)  # an older plan must not be taken by this print
 
@@ -116,7 +120,9 @@ class Tracker:
 
     def _start(self, printer, dev_id, status, cur):
         pend = self._take_pending(dev_id, status.get("job_name"))
-        plan = _slot_plan(pend[0], status.get("trays") or []) if pend else {"slots": {}, "no_plan": True}
+        plan = _slot_plan(pend[0], status.get("trays") or [], pend[3]) if pend else {"slots": {}, "no_plan": True}
+        if pend and pend[3]:
+            plan = {**plan, "slot_mapping": pend[3]}  # kept with the job: how its slots were chosen
         if cur:
             plan = {**plan, "printer_job_id": cur}
         # Recorded so a real print shows whether the sent project name and the printer's job name ever match.

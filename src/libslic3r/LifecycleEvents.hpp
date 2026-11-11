@@ -103,6 +103,11 @@ namespace Slic3r
         // Finished: the plate being sent; -1 when unknown or, for a send job, when all plates are sent.
         int index = -1;
 
+        // PrintJobStarted only: JSON object {"<filament id, 1-based, as in the statistics JSON>": "<slot>"} for the
+        // filaments the user mapped to printer slots ("ext", "ext2", "ams<ams id>-<tray id>", the names
+        // device_status reports). Empty when the print has no mapping (no AMS, or not a Bambu job).
+        std::string slot_mapping;
+
         // Aggregate project dirty state for ProjectDirtyChanged.
         bool dirty = false;
 

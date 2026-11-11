@@ -12,6 +12,7 @@
 #include <slic3r/GUI/BuildCommit.hpp>
 #include <slic3r/GUI/DeviceCore/DevManager.h>
 #include <slic3r/GUI/DeviceCore/DevFilaSystem.h>
+#include <slic3r/GUI/DeviceCore/DevMapping.h>
 #include <slic3r/GUI/DeviceManager.hpp>
 #include <slic3r/GUI/GUI.hpp>
 #include <slic3r/GUI/GUI_App.hpp>
@@ -174,9 +175,9 @@ py::object device_status(const std::string& dev_id)
         return py::none();
 
     py::list trays;
-    auto add_tray = [&trays](const std::string& slot, const DevAmsTray& tray) {
+    auto add_tray = [&trays](const std::string& ams_id, const std::string& tray_id, const DevAmsTray& tray) {
         py::dict t;
-        t["slot"]       = slot;
+        t["slot"]       = DevMappingUtil::slot_name(ams_id, tray_id);
         t["type"]       = tray.m_fila_type;
         // The printer reports RRGGBBAA; anything else is not a colour.
         t["color"]      = tray.color.size() == 8 ? "#" + tray.color.substr(0, 6) : std::string();
@@ -189,9 +190,9 @@ py::object device_status(const std::string& dev_id)
     if (const std::shared_ptr<DevFilaSystem> fila = machine->GetFilaSystem())
         for (const auto& ams : fila->GetAmsList())
             for (const auto& tray : ams.second->GetTrays())
-                add_tray("ams" + ams.first + "-" + tray.first, *tray.second);
+                add_tray(ams.first, tray.first, *tray.second);
     for (const DevAmsTray& tray : machine->vt_slot)
-        add_tray(tray.id == std::to_string(VIRTUAL_TRAY_MAIN_ID) ? "ext" : "ext2", tray);
+        add_tray(tray.id, "0", tray);
 
     py::dict out;
     out["state"]        = machine->print_status;

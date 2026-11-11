@@ -20,6 +20,7 @@ Last updated: 2026-11-11.
 | Print tracking through the host (deduct on finish, estimate on fail) | done, reviewed | unit tests; **no real print yet** |
 | Host API `device_status`, `slice_statistics`; plate index in events | done, reviewed | builds; not exercised in the app |
 | Plug-in shipped with the app, installed at start-up | done, reviewed | Catch2 tests; first install seen by hand |
+| AMS: filament -> tray mapping of a sent job reaches the plug-in (`slot_mapping` on `PrintJobStarted`) | done | Catch2 (slot naming, mapping JSON), unit tests; **no real AMS print yet** |
 | Filaments as a top-level tab (layout prototype) | built | **manual test script not run yet** |
 
 ## Commits on `lynx` (on top of upstream `3538f239c2`)
@@ -57,6 +58,15 @@ Last updated: 2026-11-11.
 - `PrintStateChanged` fires on state changes (and on a new job id), not per layer. The
   layer is read with `device_status` at that moment; when the printer gives none, the
   plug-in asks for manual entry instead of guessing.
+- Bambu AMS mapping: the send dialog builds `PrintParams::ams_mapping2` (`SelectMachine.cpp`
+  `get_ams_mapping_result`), one `{ams_id, slot_id}` per filament preset, 0-based (statistics
+  id = index + 1). External spool: ams_id 255 (254 = second nozzle's), slot_id 0. Not mapped:
+  255/255 (the old `ams_mapping` array uses -1 for both unmapped and external, so it cannot
+  be used). AMS and AMS HT: ams_id and tray id as in `device_status` (`ams<a>-<t>`). The
+  naming lives in `DevMappingUtil::slot_name`, shared with `device_status`. The printer also
+  reports `print.mapping` (uint16 `ams_id << 8 | slot_id`, 0xFFFF unmapped) into
+  `MachineObject::print_job_filament_mapping`; nothing uses it yet, and it is firmware
+  dependent. Sent from the SD card: the dialog has no sliced plan of this project.
 - Statistics `layers[i]` is printer layer `i + 1` (`M73 L`). Flush at filament changes has
   no layer in the data; `plan.py` spreads it in proportion to extrusion.
 - A user filament preset needs its `.info` sidecar and must inherit from an existing
@@ -93,11 +103,14 @@ To check by hand:
 - One real print with the plug-in enabled, and one cancelled print: does the job name from
   the printer match the project name, does a cancel arrive with error code `0x0300400C`,
   is the layer present at the end, how long from send to RUNNING.
+- AMS print with two or more filaments (spools assigned to `ams0-0`, `ams0-1`): each
+  spool is charged its own filament; one tray without a spool is listed as unassigned;
+  cancel gives per-spool estimates. Also check: external spool only (`ext`), AMS HT
+  (slot name `ams128-0`?), a filament left unmapped, a print started from the SD card (must
+  not take the project's plan), the job's `plan_json` has `slot_mapping`.
 - Record real traffic with `lynx/core/tools/bambu_record.py` to replace synthetic fixtures.
 
 Not done yet:
-- AMS: which filament goes to which tray is unknown to the plug-in; multi-filament prints
-  end with a prompt to assign spools by hand.
 - Rename the application to LynxSlicer (then re-check that the Bambu network plug-in
   still loads).
 - Layout beyond the prototype: Printers tab, Print Settings tab, right panel, removing

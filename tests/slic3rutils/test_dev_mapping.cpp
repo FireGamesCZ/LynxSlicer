@@ -254,3 +254,20 @@ TEST_CASE("Switch-bound AMS with an invalid track is excluded from mapping", "[D
     DevFilaSystemParser::ParseV1_0(print_push, &obj_no_switch, obj_no_switch.GetFilaSystem().get(), false);
     REQUIRE(obj_no_switch.GetFilaSystem()->GetAmsList().count("0") == 0);
 }
+
+TEST_CASE("Slot names and the job's filament-to-slot mapping", "[DevMapping]")
+{
+    CHECK(DevMappingUtil::slot_name("255", "0") == "ext");
+    CHECK(DevMappingUtil::slot_name("254", "0") == "ext2");
+    CHECK(DevMappingUtil::slot_name("0", "3") == "ams0-3");
+    CHECK(DevMappingUtil::slot_name("128", "0") == "ams128-0"); // AMS HT
+
+    // filament 1 -> AMS 1 tray 2, filament 2 not mapped (255/255), filament 3 -> external spool
+    const std::string mapping = R"([{"ams_id":1,"slot_id":2},{"ams_id":255,"slot_id":255},{"ams_id":255,"slot_id":0}])";
+    CHECK(json::parse(DevMappingUtil::slot_mapping_json(mapping)) == json({{"1", "ams1-2"}, {"3", "ext"}}));
+
+    CHECK(DevMappingUtil::slot_mapping_json("").empty());
+    CHECK(DevMappingUtil::slot_mapping_json("[]").empty());
+    CHECK(DevMappingUtil::slot_mapping_json(R"([{"ams_id":255,"slot_id":255}])").empty());
+    CHECK(DevMappingUtil::slot_mapping_json(R"({"ams_id":0})").empty());
+}

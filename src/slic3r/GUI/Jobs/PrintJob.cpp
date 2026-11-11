@@ -9,6 +9,7 @@
 #include "bambu_networking.hpp"
 
 #include "slic3r/GUI/DeviceCore/DevManager.h"
+#include "slic3r/GUI/DeviceCore/DevMapping.h"
 #include "slic3r/GUI/DeviceCore/DevUtil.h"
 
 #include "slic3r/Utils/FileTransferUtils.hpp"
@@ -187,6 +188,7 @@ void PrintJob::process(Ctl &ctl)
         start_ctx.device_id = m_dev_id;
         start_ctx.source = "print_job";
         start_ctx.index = m_lifecycle_plate_index;
+        start_ctx.slot_mapping = DevMappingUtil::slot_mapping_json(task_ams_mapping2);
         fire_lifecycle_event(LifecycleEvent::PrintJobStarted, start_ctx);
         m_lifecycle_started = true;
     };

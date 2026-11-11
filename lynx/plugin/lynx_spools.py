@@ -82,7 +82,9 @@ class SpoolsPage(orca.pages.PagesPluginCapabilityBase):
         if event == "PrintJobStarted":  # not SendJobStarted: an upload alone is not a print
             # worker thread: memory only, and only if a plate was sliced (so the tracker exists)
             if self.tracker is not None:
-                self.tracker.job_sent(ctx.device_id, ctx.name, getattr(ctx, "index", -1))
+                # slot_mapping: JSON {filament id: slot name}, "" when none; older hosts lack the attribute
+                mapping = json.loads(getattr(ctx, "slot_mapping", "") or "{}")
+                self.tracker.job_sent(ctx.device_id, ctx.name, getattr(ctx, "index", -1), mapping)
             return
         if event not in ("SlicingJobComplete", "PrintStateChanged") or not self._can_track():
             return
